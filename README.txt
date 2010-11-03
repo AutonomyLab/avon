@@ -2,7 +2,8 @@
 Avon
 ======
 
-A C library that implements an HTTP interface to robot simulators.
+A C library that implements an HTTP interface to robot simulators,
+using REST semantics and JSON XDR.
 
 Authors
 -------
