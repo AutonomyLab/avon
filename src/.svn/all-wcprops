@@ -1,0 +1,47 @@
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/svnroot/playerstage/!svn/ver/8491/code/websim/src
+END
+parser.cc
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svnroot/playerstage/!svn/ver/7895/code/websim/src/parser.cc
+END
+puppet.cc
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svnroot/playerstage/!svn/ver/7711/code/websim/src/puppet.cc
+END
+confederate.cc
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svnroot/playerstage/!svn/ver/7711/code/websim/src/confederate.cc
+END
+req_sim.cc
+K 25
+svn:wc:ra_dav:version-url
+V 61
+/svnroot/playerstage/!svn/ver/8491/code/websim/src/req_sim.cc
+END
+websim.hh
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svnroot/playerstage/!svn/ver/8259/code/websim/src/websim.hh
+END
+websim.cc
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/svnroot/playerstage/!svn/ver/8457/code/websim/src/websim.cc
+END
+req_model.cc
+K 25
+svn:wc:ra_dav:version-url
+V 63
+/svnroot/playerstage/!svn/ver/8016/code/websim/src/req_model.cc
+END

@@ -1,0 +1,17 @@
+
+[federation]
+deckard:8000=master
+deckard:8001=slave1
+#deckard:8002=slave2
+#deckard:8003=slave3
+
+[master]
+#monkey=slave1:pioneer2dx;slave2:pioneer2dx
+#chunky=slave1:pioneer2dx;slave2:pioneer2dx
+#punky=slave1:pioneer2dx;slave2:pioneer2dx
+monkey=slave1:pioneer2dx
+chunky=slave1:pioneer2dx
+punky=slave1:pioneer2dx
+
+
+

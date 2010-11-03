@@ -1,0 +1,411 @@
+/*
+ *  WebSim - Library for web-enabling and federating simulators.
+ *  Copyright (C) 2009
+ *    Richard Vaughan, Brian Gerkey, and Nate Koenig
+ *
+ *  This library is free software; you can redistribute it and/or
+ *  modify it under the terms of the GNU Lesser General Public
+ *  License as published by the Free Software Foundation; either
+ *  version 2.1 of the License, or (at your option) any later version.
+ *
+ *  This library is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *  Lesser General Public License for more details.
+ *
+ *  You should have received a copy of the GNU Lesser General Public
+ *  License along with this library; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *
+ */ 
+
+/* Desc: HTTP interface to simulators 
+ * Author: Brian Gerkey, Richard Vaughan, Abbas Sadat
+ * Date: 9 March 2009
+ * SVN: $Id: gazebo.h 7398 2009-03-09 07:21:49Z natepak $
+ */
+
+
+#include <assert.h>
+#include <stdlib.h>
+#include <string.h>
+#include <libxml/encoding.h>
+
+#include <iostream>
+#include <fstream>
+
+#include "websim.hh"
+using namespace websim;
+
+const std::string WebSim::package = "WebSim";
+const std::string WebSim::version = "0.1";
+
+
+std::string Time::String()
+{ 
+  // faster than using boost::lexical_cast<float>
+  char buf[128];
+  snprintf( buf, 128, "%lu.%lu", sec, usec );  
+  return std::string( buf );
+}
+
+WebSim::WebSim( const std::string& _host, 
+                const unsigned short _port) :
+  tick_count_expected(0),
+  ticks_remaining(0),
+  host(_host), 
+  port(_port),
+  puppets(),
+  confederates(),  
+  unacknowledged_pushes(0),
+  unacknowledged_ticks(0),
+  total_ticks(0)
+{
+  
+}
+
+
+WebSim::~WebSim()
+{
+  // No event_fini() to call...
+}
+
+void WebSim::Startup( bool verbose )
+{
+  if( verbose )
+    {
+      char buf[512];
+      snprintf( buf, 512, "%s:%u", host.c_str(), port );
+      hostportname = buf;
+      
+      printf( "[%s] %s %s hosting %s %s at http://%s\n", 
+	      package.c_str(), 
+	      package.c_str(),
+	      version.c_str(),
+	      IdentificationString().c_str(), // implemented by the simulator
+	      VersionString().c_str(),
+	      hostportname.c_str() );
+    }
+  
+  // Set up the HTTP server
+  // Not sure whether it's safe to do this more that once in one process
+  event_init();
+  
+  if( verbose )
+    {
+      printf("[%s] Starting HTTP server...", package.c_str() );
+      fflush(stdout);
+    }
+
+  this->eh = evhttp_start(this->host.c_str(), this->port);
+  assert(eh);
+  evhttp_set_gencb(eh, &WebSim::EventCallback, (void*)this);
+  
+  if( verbose )
+    {
+      puts( " done." );
+    }
+}
+
+void 
+WebSim::Tick()
+{
+  // tick all my confederates
+  std::map<std::string,Confederate*>::iterator it;
+  for( it = confederates.begin(); it != confederates.end(); it++ )
+    it->second->Tick();  
+}
+
+void
+WebSim::Wait()
+{ 
+  while( unacknowledged_ticks || unacknowledged_pushes || ticks_remaining )
+ 	 {			 
+ 		printf( "event loop in wait (%d %d %d)\n",
+ 				  unacknowledged_ticks, unacknowledged_pushes, ticks_remaining );
+ 		event_loop( EVLOOP_ONCE );
+ 	 }    
+}
+
+void 
+WebSim::StringSplit(const std::string &s, 
+                    std::vector<std::string> &t, 
+                    const std::string &d)
+{
+  t.clear();
+  size_t start = 0, end;
+  while ((end = s.find_first_of(d, start)) != std::string::npos)
+    {
+      t.push_back(s.substr(start, end-start));
+      start = end + 1;
+    }
+  t.push_back(s.substr(start));
+}
+
+// Strange that libevent doesn't provide a way to free the evkeyvalq
+// structure.
+void
+WebSim::DeleteKeyVal(struct evkeyvalq* query_args)
+{
+  struct evkeyval* kv;
+  TAILQ_FOREACH(kv, query_args, next)
+    {
+      free(kv->key);
+      free(kv->value);
+      TAILQ_REMOVE(query_args, kv, next);
+    }
+}
+
+bool
+WebSim::GetValue( std::string& value,
+		  struct evkeyvalq* query_args, 
+		  const std::string& key)
+{
+  struct evkeyval* kv;
+  TAILQ_FOREACH(kv, query_args, next)
+    {
+      if(key == kv->key)
+	{
+	  value = std::string(kv->value);
+	  return true;
+	}
+    }
+  return false;
+}
+
+bool
+WebSim::HandleURI(const std::string& model,
+                  const std::string& prop,
+                  const std::string& action,
+                  struct evkeyvalq* kv,
+                  std::string& response)
+{
+
+  Format format;
+  std::string f;
+  // specify the format of the response: Text or Xml
+  if(GetValue(f, kv, "format")){
+
+    if(f == "xml")
+      format = XML;
+    else 
+      format = TEXT;
+
+  }else{
+
+    format = TEXT;
+
+  }
+
+  // The special simulation model
+  if(model == "sim")
+    {
+      return HandleSimRequest(prop, action, format, kv, response);
+    }
+  else 
+    {
+      return HandleModelRequest(model, prop, action, format, kv, response);
+    }
+}
+
+
+
+xmlChar *
+ConvertInput(const char *in, const char *encoding)
+{
+  xmlChar *out;
+  int ret;
+  int size;
+  int out_size;
+  int temp;
+  xmlCharEncodingHandlerPtr handler;
+
+  if (in == 0)
+    return 0;
+
+  handler = xmlFindCharEncodingHandler(encoding);
+
+  if (!handler) {
+    printf("ConvertInput: no encoding handler found for '%s'\n",
+	   encoding ? encoding : "");
+    return 0;
+  }
+
+  size = (int) strlen(in) + 1;
+  out_size = size * 2 - 1;
+  out = (unsigned char *) xmlMalloc((size_t) out_size);
+
+  if (out != 0) {
+    temp = size - 1;
+    ret = handler->input(out, &out_size, (const xmlChar *) in, &temp);
+    if ((ret < 0) || (temp - size + 1)) {
+      if (ret < 0) {
+	printf("ConvertInput: conversion wasn't successful.\n");
+      } else {
+	printf
+	  ("ConvertInput: conversion wasn't successful. converted: %i octets.\n",
+	   temp);
+      }
+
+      xmlFree(out);
+      out = 0;
+    } else {
+      out = (unsigned char *) xmlRealloc(out, out_size + 1);
+      out[out_size] = 0;  
+    }
+  } else {
+    printf("ConvertInput: no mem\n");
+  }
+
+  return out;
+}
+
+static const char* FAVICONFILE = "favicon.ico";
+
+void
+WebSim::EventCallback(evhttp_request* req, void* arg)
+{
+  WebSim* obj = (WebSim*)arg;
+
+  // Pull out query args
+  struct evkeyvalq query_args;
+  evhttp_parse_query(req->uri, &query_args);
+
+  struct evbuffer* eb = evbuffer_new();
+  assert(eb);
+
+  int response_code;
+  std::string response_string;
+  std::string model, prop, action, response;
+  puts(req->uri);
+
+  static char* favicon_data = NULL;
+  static int favicon_data_len = 0;
+
+  // handle favicon requests
+  if( strcmp( req->uri, "/favicon.ico" ) == 0 )
+	 {
+		if( ! favicon_data )
+		  {
+			 std::ifstream in;
+			 in.open( FAVICONFILE, std::ios::binary );
+			 
+			 if( in.fail() )
+				{
+				  evhttp_send_reply( req, 400, "File not found", eb );
+				  evbuffer_free(eb);
+				  return;
+				}
+			 else
+				{
+				  puts( "loading favicon" );
+				  in.seekg( 0, std::ios::end );
+				  favicon_data_len = in.tellg();
+				  in.seekg( 0, std::ios::beg );
+				  
+				  favicon_data = new char[favicon_data_len];
+				  in.read( favicon_data, favicon_data_len );
+				}
+		  }
+		
+		// we now have good favicon data
+		evbuffer_add( eb, favicon_data, favicon_data_len );
+		evhttp_send_reply( req, 200, "OK", eb );
+		evbuffer_free(eb);		
+		return;
+	 } 
+
+  if(!obj->ParseURI(model, prop, action, req->uri, response))
+    {
+      response_code = 400;
+      response_string = "Invalid request";
+    }
+  else if(!obj->HandleURI(model, prop, action, &query_args, response))
+    {
+      response_code = 400;
+      response_string = "Invalid request";
+    }
+  else
+    {
+      response_code = 200;
+      response_string = "OK";
+    }
+
+
+  evbuffer_add_printf(eb, "%s\n", response.c_str());
+  evhttp_send_reply(req, response_code, response_string.c_str(), eb);
+  evbuffer_free(eb);
+
+  obj->DeleteKeyVal(&query_args);
+}
+
+bool
+WebSim::ParseURI( std::string& model,
+                  std::string& prop,
+		  std::string& action,
+		  const std::string uri,
+		  std::string& response)
+{
+   // Remove the query args
+  std::vector<std::string> uri_parts;
+  StringSplit(uri, uri_parts, "?");
+  assert(uri_parts.size() > 0);
+  std::string bare_uri = uri_parts[0];
+
+  // We require 3 path components: model/property/action
+  StringSplit(bare_uri, uri_parts, "/");
+
+
+  //check if the web page is requested
+  if(uri_parts.size()==2){
+	
+	model ="sim";
+	prop = "homepage";
+	action = "get";
+	return true;
+  }
+
+ 
+  // otherwise there should be 4 parts, with the first one empty
+  if(uri_parts.size() != 4)
+  {
+    response = "Must be 3 slash-separated parts in the URI";
+    return false;
+  }
+
+  model = uri_parts[1];
+  prop = uri_parts[2];
+  action = uri_parts[3];
+
+  return true;
+}
+
+
+bool
+WebSim::SetPuppetPVA( const std::string& name, 
+		      Pose& p,
+		      Velocity& v,
+		      Acceleration& a )
+{
+  Puppet* pup = GetPuppet( name.c_str() );
+  
+  if( pup )
+    {
+      pup->Push( p,v,a );
+      return true;
+    }
+  
+  printf( "[websim] warning: attempt to set puppet PVA on non-existent puppet \"%s\"\n",
+	  name.c_str() );
+  return false;
+}
+
+WebSim::Puppet* WebSim::GetPuppet( const std::string& name )
+{
+  return puppets[name];
+}
+
+WebSim::Confederate* WebSim::GetConfederate( const std::string& name )
+{
+  return confederates[name];
+}

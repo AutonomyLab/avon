@@ -1,0 +1,23 @@
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svnroot/playerstage/!svn/ver/7711/code/websim/examples
+END
+world.fed
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svnroot/playerstage/!svn/ver/7711/code/websim/examples/world.fed
+END
+Makefile
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svnroot/playerstage/!svn/ver/7474/code/websim/examples/Makefile
+END
+simple.cc
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svnroot/playerstage/!svn/ver/7474/code/websim/examples/simple.cc
+END
