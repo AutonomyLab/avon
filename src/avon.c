@@ -1,3 +1,12 @@
+/*
+  File: avon.c
+  Description: a lightweight HTTP server for robots and robot simulators
+  Author: Richard Vaughan (vaughan@sfu.ca)
+  Date: 1 November 2010
+  Version: $Id:$  
+  License: LGPL v3.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h> // for memset()
@@ -7,9 +16,19 @@
 // These headers must be included prior to the libevent headers
 #include <sys/types.h>
 #include <sys/queue.h>
+
 // libevent
 #include <event.h>
 #include <evhttp.h>
+
+// uthash-1.9.2 is distributed with the Avon source
+#include "uthash-1.9.2/src/utarray.h"
+#include "uthash-1.9.2/src/uthash.h"
+#include "uthash-1.9.2/src/utstring.h"
+
+// libjson-c [tested with v0.9]
+#include <json.h>
+
 // convenient callback typdef
 typedef void(*evhttp_cb_t)(struct evhttp_request *, void *); 
 
@@ -19,10 +38,8 @@ static const char* _package = "Avon";
 static const char* _version = "0.1";
 //static const char* FAVICONFILE = "/favicon.ico";
 
-#include "utarray.h"
-#include "uthash.h"
-#include "utstring.h"
-
+// static allocation for model names makes the code very simple, but
+// will fail/crash if names exceed these lengths
 #define NAME_LEN_MAX 512
 #define TYPE_LEN_MAX 512
 
@@ -36,7 +53,8 @@ typedef struct {
 // root node statically alocated
 _node_t _root;
 
-static _node_t* _tree = NULL;
+// hash table handle
+_node_t* _tree = NULL;
 
 // local, statically allocated server instance structure
 struct av
@@ -105,6 +123,9 @@ int av_init( const char* hostname,
 	char buf[512];
 	snprintf( buf, 512, "%s:%u", hostname, port );
 	_av.hostportname = strdup( buf );
+	
+	// json-c library setup
+	MC_SET_DEBUG(1);
 	
 	return 0; //ok
 }
@@ -482,38 +503,94 @@ void handle_data( struct evhttp_request* req, type_handle_pair_t* thp )
 	 }
 }
 
+
+void handle_pva_get( struct evhttp_request* req, void* handle )
+{
+  av_pva_t pva;
+  (*_av.pva_get)( handle, &pva );
+  
+  // encode the PVA into json
+  char* json = json_format_pva( &pva );			 
+  reply_success( req, HTTP_OK, "pva GET OK", json);			
+  free(json);
+}
+
+void unpack_json_double_array( json_object* job, double* arr, const size_t len )
+{
+  assert( json_object_array_length(job) == len );
+  
+  for( size_t i=0; i<len; i++ )
+	 {
+		json_object* d = json_object_array_get_idx( job, i );
+		assert(d);
+		arr[i] = json_object_get_double( d );
+	 }
+}
+
+void unpack_json_pva( json_object* job, av_pva_t* pva )
+{
+  assert( json_object_array_length(job) == 3 );
+  
+  json_object* p_array = json_object_array_get_idx( job, 0 );
+  json_object* v_array = json_object_array_get_idx( job, 1 );
+  json_object* a_array = json_object_array_get_idx( job, 2 );
+  
+  unpack_json_double_array( p_array, pva->p, 6 );
+  unpack_json_double_array( v_array, pva->v, 6 );
+  unpack_json_double_array( a_array, pva->a, 6 );
+}
+
+int parse_json_pva( const char* buf, av_pva_t* pva )
+{
+  json_object* job = json_tokener_parse( buf );  
+  json_object* pva_array = json_object_object_get(job, "pva");
+  unpack_json_pva( pva_array, pva );
+  return 0; // ok
+}
+
+void handle_pva_set( struct evhttp_request* req, void* handle )
+{
+  av_pva_t pva;
+ 													 
+  const size_t buflen = EVBUFFER_LENGTH(req->input_buffer);  
+  char* buf = malloc(buflen+1); // space for terminator
+  memcpy( buf, EVBUFFER_DATA(req->input_buffer), buflen );  
+  buf[buflen] = 0; // string terminator
+  
+  printf( "received %lu bytes\n", buflen );
+  printf( "   %s\n", buf );
+
+  int result = parse_json_pva( buf, &pva );
+
+  if( result != 0 )			  
+	 reply_error( req, HTTP_NOTMODIFIED, "pva POST failed: failed to parse JSON payload." );						
+  else
+	 {
+		// set the new PVA
+		(*_av.pva_set)( handle, &pva );				
+		// get the PVA and return it so the client can see what happened
+		handle_pva_get( req, handle );
+	 }
+} 
+
+
 void handle_pva( struct evhttp_request* req, void* handle )
 {
   switch(req->type )
 	 {
 	 case EVHTTP_REQ_GET:
-		 {
-			 av_pva_t pva;
-			 (*_av.pva_get)( handle, &pva );
-			 
-			 // encode the PVA into json
-			 char* json = json_format_pva( &pva );			 
-			 reply_success( req, HTTP_OK, "pva GET OK", json);			
-			 free(json);
-		 } break;
+		handle_pva_get( req, handle );
+		break;
 	 case EVHTTP_REQ_HEAD:						
-		 puts( "warning: pva HEAD not implemented" );
-		 reply_success( req, HTTP_OK, "pva HEAD OK", NULL);			
-		 break;		 
+		puts( "warning: pva HEAD not implemented" );
+		reply_success( req, HTTP_OK, "pva HEAD OK", NULL);			
+		break;		 
 	 case EVHTTP_REQ_POST:
-		 {
-			av_pva_t pva;
-			 // todo- parse PVA from JSON
-			 bzero( &pva, sizeof(pva));
-			 
-			 (*_av.pva_set)( handle, &pva );
-			 
-			 puts( "error: pva POST not implemented" );
-			 reply_error( req, HTTP_NOTMODIFIED, "pva POST failed: not implemented" );						
-		 } break;
+		handle_pva_set( req, handle );
+		break;
 	 default:
-		 printf( "warning: unknown request type %d in handle_pva\n", req->type );
-		 reply_error( req, HTTP_NOTMODIFIED, "pva unrecognized action" );						
+		printf( "warning: unknown request type %d in handle_pva\n", req->type );
+		reply_error( req, HTTP_NOTMODIFIED, "pva unrecognized action" );						
 	 }
 }
 

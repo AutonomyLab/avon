@@ -27,7 +27,7 @@ MACRO (FOO_MAKE_PKGCONFIG _name _desc _extDeps _intDeps _cFlags _libFlags)
   INSTALL (FILES ${CMAKE_CURRENT_BINARY_DIR}/${_name}.pc DESTINATION lib/pkgconfig/ COMPONENT pkgconfig)
 ENDMACRO (FOO_MAKE_PKGCONFIG)
 
-FOO_MAKE_PKGCONFIG("Avon" "HTTP interface for robot simulators" "" "" "" "")
+FOO_MAKE_PKGCONFIG("avon" "HTTP interface for robot simulators" "" "" "" "")
 
 #####################################
 # Build type cflags
@@ -51,11 +51,31 @@ if(COMMAND cmake_policy)
   cmake_policy(SET CMP0003 NEW)
 endif(COMMAND cmake_policy)
 
-# TODO: test for libevent
 
 include(FindPkgConfig)
 
-include_directories(src uthash-1.9.2/src /opt/local/include )
+pkg_search_module( LIBJSON REQUIRED json )
+IF( LIBJSON_FOUND )
+  MESSAGE( STATUS ${INDENT} "Libjson-c version ${LIBJSON_VERSION} detected at ${LIBJSON_PREFIX}" )
+  MESSAGE( STATUS "    LIBJSON_CFLAGS = ${LIBJSON_CFLAGS}" )
+  MESSAGE( STATUS "    LIBJSON_LDFLAGS = ${LIBJSON_LDFLAGS}" )
+ELSE( LIBJSON_FOUND )
+  MESSAGE( ${INDENT} "Libjson not detected" )
+ENDIF( LIBJSON_FOUND )
+
+include_directories(
+   .
+	src 
+   ${LIBJSON_INCLUDE_DIRS}
+   ${CMAKE_INCLUDE_PATH}
+	${CMAKE_INSTALL_PREFIX}/include
+)
+
+link_directories( 
+	${LIBJSON_LIBRARY_DIRS} 
+	${CMAKE_INSTALL_PREFIX}/lib
+)
+
 
 add_library(avon SHARED src/avon.c )
 add_library(avon-static STATIC src/avon.c )
@@ -66,7 +86,7 @@ set_target_properties(avon-static PROPERTIES OUTPUT_NAME avon)
 # Prevent deletion of existing lib of same name
 set_target_properties(avon-static PROPERTIES CLEAN_DIRECT_OUTPUT 1)
 
-target_link_libraries(avon event )
+target_link_libraries(avon event json)
 
 install(TARGETS avon avon-static
         LIBRARY DESTINATION lib

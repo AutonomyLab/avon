@@ -1,3 +1,12 @@
+/*
+  File: avon.c
+  Description: a lightweight HTTP server for robots and robot simulators
+  Author: Richard Vaughan (vaughan@sfu.ca)
+  Date: 1 November 2010
+  Version: $Id:$  
+  License: LGPL v3.
+ */
+
 #include <time.h> // for time_t
 #include <stdint.h> // for uint16_t
 
