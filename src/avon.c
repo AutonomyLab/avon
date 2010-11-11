@@ -317,7 +317,7 @@ void handle_data( struct evhttp_request* req, type_handle_pair_t* thp )
   switch(req->type )
 	 {
 	 case EVHTTP_REQ_GET:
-		if( _av.data_get[thp->type] )
+		if( _av.data_get[thp->type] && _json_format_fn[thp->type].data )
 		  {
 				av_msg_t data;
 				(*_av.data_get[thp->type])( thp->handle, &data );			 
@@ -327,7 +327,7 @@ void handle_data( struct evhttp_request* req, type_handle_pair_t* thp )
 				free(json);
 		  }
 		else			
-		  reply_error( req, HTTP_NOTFOUND, "data GET not found: No callback installed for type" );									
+		  reply_error( req, HTTP_NOTFOUND, "data GET not found: No callback and/or formatter installed for type" );									
 		break;
 		
 	 case EVHTTP_REQ_HEAD:						
@@ -356,7 +356,7 @@ void handle_cfg( struct evhttp_request* req, type_handle_pair_t* thp )
   switch(req->type )
 	 {
 	 case EVHTTP_REQ_GET:
-		if( _av.cfg_get[thp->type] )
+		if( _av.cfg_get[thp->type]  && _json_format_fn[thp->type].cfg )
 		  {
 			 av_msg_t cfg;
 			 (*_av.cfg_get[thp->type])( thp->handle, &cfg );			 
@@ -366,7 +366,7 @@ void handle_cfg( struct evhttp_request* req, type_handle_pair_t* thp )
 			 free(json);
 		  }
 		else			
-		  reply_error( req, HTTP_NOTFOUND, "cfg GET not found: No callback installed for type" );									
+		  reply_error( req, HTTP_NOTFOUND, "cfg GET not found: No callback and/or formatter installed for type" );									
 		break;
 		
 	 case EVHTTP_REQ_HEAD:						
