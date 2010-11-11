@@ -67,7 +67,7 @@ char* uts_dup_free( UT_string* s )
 // the data exporting functions ------------------------------------------------
 
 
-char* json_tree( const char* name )
+char* xdr_tree( const char* name )
 {
   UT_string* s;
   utstring_new(s);
@@ -92,7 +92,7 @@ char* json_tree( const char* name )
 			else
 				utstring_printf(s, "," );
 					
-			char* json = json_tree( *p );
+			char* json = xdr_tree( *p );
 			utstring_printf(s, " %s", json );
 			free(json);
 		}	
@@ -104,7 +104,7 @@ char* json_tree( const char* name )
 	return uts_dup_free(s); // caller must free
 }
 
-char* json_format_pva( const av_pva_t* pva )
+char* xdr_format_pva( const av_pva_t* pva )
 {
   assert(pva);
   
@@ -130,7 +130,7 @@ char* json_format_pva( const av_pva_t* pva )
   return strdup( buf );
 }
 
-char* json_format_geom( const av_geom_t* g )
+char* xdr_format_geom( const av_geom_t* g )
 {
   assert(g);
   
@@ -151,7 +151,7 @@ char* json_format_geom( const av_geom_t* g )
 }
 
 
-char* json_format_data_ranger( av_msg_t* d )
+char* xdr_format_data_ranger( av_msg_t* d )
 {
   assert(d);
   assert(d->type == AV_MODEL_RANGER);
@@ -191,7 +191,7 @@ char* json_format_data_ranger( av_msg_t* d )
   return uts_dup_free(s);
 }
 
-char* json_format_cfg_ranger( av_msg_t* d )
+char* xdr_format_cfg_ranger( av_msg_t* d )
 {
   assert(d);
   assert(d->type == AV_MODEL_RANGER);
@@ -211,7 +211,7 @@ char* json_format_cfg_ranger( av_msg_t* d )
 		if( i > 0 )				
 		  utstring_printf(s, ",\n" );		
 
-		char* jgeom = json_format_geom( &cfg->transducers[i].geom );		
+		char* jgeom = xdr_format_geom( &cfg->transducers[i].geom );		
 		utstring_printf(s, "%s", jgeom );
 		free(jgeom);
 	 }
@@ -247,7 +247,7 @@ void unpack_json_pva( json_object* job, av_pva_t* pva )
   unpack_json_double_array( a_array, pva->a, 6 );
 }
 
-int json_parse_pva( const char* buf, av_pva_t* pva )
+int xdr_parse_pva( const char* buf, av_pva_t* pva )
 {
   json_object* job = json_tokener_parse( buf );  
   json_object* pva_array = json_object_object_get(job, "pva");

@@ -77,26 +77,28 @@ struct av
 } _av; // statically alocated instance - not thread safe!
 
 
-// defined in ./json.c
-char* json_format_pva( av_pva_t* );
-char* json_format_geom( av_geom_t* );
-char* json_format_data_ranger( av_msg_t* );
-char* json_format_cfg_ranger( av_msg_t* );
-char* json_tree( const char* );
+/* XDR formatting functions defined elsewhere, so that alternative
+	 schemes can be dropped in. */
+char* xdr_format_pva( av_pva_t* );
+char* xdr_format_geom( av_geom_t* );
+char* xdr_format_data_ranger( av_msg_t* );
+char* xdr_format_cfg_ranger( av_msg_t* );
+char* xdr_tree( const char* );
 
-int json_parse_pva( const char*, av_pva_t*);
+int xdr_parse_pva( const char*, av_pva_t*);
+
 
 static struct
 {
   char* (*data)( av_msg_t* );
   char* (*cmd)( av_msg_t* );
   char* (*cfg)( av_msg_t* );
-} _json_format_fn[ AV_MODEL_TYPE_COUNT ] = 
+} _xdr_format_fn[ AV_MODEL_TYPE_COUNT ] = 
   { 
 	 {NULL,NULL,NULL}, // sim
 	 {NULL,NULL,NULL}, // generic
 	 {NULL,NULL,NULL}, // position2d
-	 { json_format_data_ranger, NULL, json_format_cfg_ranger }, // ranger
+	 { xdr_format_data_ranger, NULL, xdr_format_cfg_ranger }, // ranger
 	 {NULL,NULL,NULL}, // fidicual
   };
 
@@ -142,45 +144,31 @@ void av_fini( void )
 	if( _av.rootdir) free(_av.rootdir);
 }
 
-
-void handle_tree( struct evhttp_request* req, void* dummy )
+void add_std_hdrs(struct evhttp_request* req )
 {
-	assert(req);
+	char server_str[512];
+	snprintf( server_str, 512, "Avon + %s-%s", 
+						_av.backend_name, _av.backend_version );
 	
-	switch(req->type )
-		{
-		case EVHTTP_REQ_GET:
-			{			 
-				char* json = json_tree(NULL);				
-				assert(json);
-				struct evbuffer* eb = evbuffer_new();
-				assert(eb);
-				evbuffer_add( eb, json, strlen(json) );			
-				free(json);
-				evhttp_send_reply( req, HTTP_OK, "Success", eb);			
-				evbuffer_free( eb );
-			} break;
-	 case EVHTTP_REQ_HEAD:						
-		 evhttp_send_reply( req, HTTP_OK, "Success", NULL);			
-		 break;		 
-		case EVHTTP_REQ_POST:
-			puts( "warning: tree POST not implemented" );
-			evhttp_send_reply( req, HTTP_NOTMODIFIED, "POST tree not implemented", NULL);			 
-			break;
-		default:
-			printf( "warning: unknown request type %d in handle_tree\n", req->type );
-			evhttp_send_reply( req, HTTP_NOTMODIFIED, "Unrecognized request type.", NULL);								 
-		}
+	evhttp_add_header(req->output_headers, 
+										"Server", server_str ); // todo: insert version number  
+	evhttp_add_header(req->output_headers, 
+										"Content-Type", "application/json; charset=UTF-8");  
+	//evhttp_add_header(req->output_headers, "Content-Language", "en-us");  
+
+	//struct evkeyval *item = NULL;
+	//TAILQ_FOREACH( item, headers, next )
+	//	printf( "OUTPUT HEADER: %s = %s\n", item->key, item->value );
 }
-
-
 
 void reply_error( struct evhttp_request* req, 
 									int code, 
 									const char* description )
 {
+	add_std_hdrs( req );
+
 	printf( "[Avon] error: %s\n", description );
-	evhttp_send_reply( req, code, description, NULL);			 
+	evhttp_send_error( req, code, description );			 
 }
 
 void reply_success( struct evhttp_request* req, 
@@ -190,9 +178,11 @@ void reply_success( struct evhttp_request* req,
 {
 	if( _av.verbose )
 		printf( "[Avon] reply: %s\n", description );
+
+	add_std_hdrs( req );
 	
 	if( payload )
-		{
+		{			
 			struct evbuffer* eb = evbuffer_new();
 			assert(eb);
 			evbuffer_add( eb, payload, strlen(payload) );			
@@ -202,6 +192,46 @@ void reply_success( struct evhttp_request* req,
 	else
 		evhttp_send_reply( req, code, description, NULL );			 		
 }
+
+
+void handle_tree( struct evhttp_request* req, void* dummy )
+{
+	assert(req);
+	
+	//	printf( "HEADERS: %s\n", req->input_headers );
+
+
+/* 	struct evkeyval *item = NULL; */
+/* 	puts( "HEADERS" ); */
+/* 	TAILQ_FOREACH( item, req->input_headers, next ) */
+/* 		printf( "HEADER: %s = %s\n", item->key, item->value ); */
+	
+/* 	const char* accept = evhttp_find_header( req->input_headers, "Accept" ); */
+
+/*   printf( "ACCEPT: %s\n", accept ? accept : "<not found" ); */
+
+	add_std_hdrs( req );
+
+	switch(req->type )
+		{
+		case EVHTTP_REQ_GET:
+			{			 
+				char* xdr = xdr_tree(NULL);				
+				assert(xdr);
+				reply_success( req, HTTP_OK, "Success", xdr );			
+				free(xdr);
+			} break;
+		case EVHTTP_REQ_HEAD:						
+		 reply_success( req, HTTP_OK, "Success", NULL );			
+		 break;		 
+		case EVHTTP_REQ_POST:
+			reply_error( req, HTTP_NOTMODIFIED, "POST tree not implemented" );			 
+			break;
+		default:
+			reply_error( req, HTTP_NOTMODIFIED, "unknown HTTP request type in handle tree" );			 
+		}
+}
+
 
 void clock_get( struct evhttp_request* req, void* obj )
 {
@@ -317,14 +347,14 @@ void handle_data( struct evhttp_request* req, type_handle_pair_t* thp )
   switch(req->type )
 	 {
 	 case EVHTTP_REQ_GET:
-		if( _av.data_get[thp->type] && _json_format_fn[thp->type].data )
+		if( _av.data_get[thp->type] && _xdr_format_fn[thp->type].data )
 		  {
 				av_msg_t data;
 				(*_av.data_get[thp->type])( thp->handle, &data );			 
-				char* json = _json_format_fn[thp->type].data( &data );
-				assert(json);				
-				reply_success( req, HTTP_OK, "data GET OK", json );
-				free(json);
+				char* xdr = _xdr_format_fn[thp->type].data( &data );
+				assert(xdr);				
+				reply_success( req, HTTP_OK, "data GET OK", xdr );
+				free(xdr);
 		  }
 		else			
 		  reply_error( req, HTTP_NOTFOUND, "data GET not found: No callback and/or formatter installed for type" );									
@@ -338,15 +368,14 @@ void handle_data( struct evhttp_request* req, type_handle_pair_t* thp )
 		{
 		  /* 				if( _av.data */
 		  /* 				av_data_t data; */
-		  /* 				if( parse_json_data( req->payload, &data ) != 0 ) */
-		  /* 					puts( "ERROR: failed to parse JSON on POST data" ); */
+		  /* 				if( parse_xdr_data( req->payload, &data ) != 0 ) */
+		  /* 					puts( "ERROR: failed to parse XDR on POST data" ); */
 		  /* 				else				 */
 		  /* 					(*_av.data_set)( handle, &data );  */
 		  
 		  reply_error( req, HTTP_NOTMODIFIED, "data POST error: data cannot be set." );									
 		}	break;	
 	 default:
-		printf( "warning: unknown request type %d in handle_data\n", req->type );
 		reply_error( req, HTTP_NOTMODIFIED, "data unrecognized action" );						
 	 }
 }
@@ -356,14 +385,14 @@ void handle_cfg( struct evhttp_request* req, type_handle_pair_t* thp )
   switch(req->type )
 	 {
 	 case EVHTTP_REQ_GET:
-		if( _av.cfg_get[thp->type]  && _json_format_fn[thp->type].cfg )
+		if( _av.cfg_get[thp->type]  && _xdr_format_fn[thp->type].cfg )
 		  {
 			 av_msg_t cfg;
 			 (*_av.cfg_get[thp->type])( thp->handle, &cfg );			 
-			 char* json = _json_format_fn[thp->type].cfg( &cfg );
-			 assert(json);				
-			 reply_success( req, HTTP_OK, "cfg GET OK", json );
-			 free(json);
+			 char* xdr = _xdr_format_fn[thp->type].cfg( &cfg );
+			 assert(xdr);				
+			 reply_success( req, HTTP_OK, "cfg GET OK", xdr );
+			 free(xdr);
 		  }
 		else			
 		  reply_error( req, HTTP_NOTFOUND, "cfg GET not found: No callback and/or formatter installed for type" );									
@@ -377,8 +406,8 @@ void handle_cfg( struct evhttp_request* req, type_handle_pair_t* thp )
 		{
 		  /* 				if( _av.cfg */
 		  /* 				av_cfg_t cfg; */
-		  /* 				if( parse_json_cfg( req->payload, &cfg ) != 0 ) */
-		  /* 					puts( "ERROR: failed to parse JSON on POST cfg" ); */
+		  /* 				if( parse_xdr_cfg( req->payload, &cfg ) != 0 ) */
+		  /* 					puts( "ERROR: failed to parse XDR on POST cfg" ); */
 		  /* 				else				 */
 		  /* 					(*_av.cfg_set)( handle, &cfg );  */
 		  
@@ -396,10 +425,10 @@ void handle_pva_get( struct evhttp_request* req, void* handle )
   av_pva_t pva;
   (*_av.pva_get)( handle, &pva );
   
-  // encode the PVA into json
-  char* json = json_format_pva( &pva );			 
-  reply_success( req, HTTP_OK, "pva GET OK", json);			
-  free(json);
+  // encode the PVA into xdr
+  char* xdr = xdr_format_pva( &pva );			 
+  reply_success( req, HTTP_OK, "pva GET OK", xdr);			
+  free(xdr);
 }
 
 
@@ -415,10 +444,10 @@ void handle_pva_set( struct evhttp_request* req, void* handle )
   printf( "received %lu bytes\n", buflen );
   printf( "   %s\n", buf );
 
-  int result = json_parse_pva( buf, &pva );
+  int result = xdr_parse_pva( buf, &pva );
 
   if( result != 0 )			  
-	 reply_error( req, HTTP_NOTMODIFIED, "pva POST failed: failed to parse JSON payload." );						
+	 reply_error( req, HTTP_NOTMODIFIED, "pva POST failed: failed to parse XDR payload." );						
   else
 	 {
 		// set the new PVA
@@ -444,7 +473,6 @@ void handle_pva( struct evhttp_request* req, void* handle )
 		handle_pva_set( req, handle );
 		break;
 	 default:
-		printf( "warning: unknown request type %d in handle_pva\n", req->type );
 		reply_error( req, HTTP_NOTMODIFIED, "pva unrecognized action" );						
 	 }
 }
@@ -458,11 +486,11 @@ void handle_geom( struct evhttp_request* req, void* handle )
 			av_geom_t geom;
 			 (*_av.geom_get)( handle, &geom );
 			 
-			 // encode the GEOM into json
-			 char* json = json_format_geom( &geom );
-			 assert(json);
-			 reply_success( req, HTTP_OK, "geom GET OK", json);			
-			 free(json);
+			 // encode the GEOM into xdr
+			 char* xdr = xdr_format_geom( &geom );
+			 assert(xdr);
+			 reply_success( req, HTTP_OK, "geom GET OK", xdr);			
+			 free(xdr);
 		 } break;
 	 case EVHTTP_REQ_HEAD:						
 		 puts( "warning: geom HEAD not implemented" );
@@ -471,7 +499,7 @@ void handle_geom( struct evhttp_request* req, void* handle )
 	 case EVHTTP_REQ_POST:
 		 {
 			 av_geom_t geom;
-			 // todo- parse GEOM from JSON
+			 // todo- parse GEOM from XDR
 			 bzero( &geom, sizeof(geom));
 			 
 			 (*_av.geom_set)( handle, &geom );
@@ -584,9 +612,9 @@ int av_register_model( const char* name,
   
 	//print_table();
 
-	char* json = json_tree( NULL );
-	printf( "json: %s\n", json );
-	free(json);
+	//char* xdr = xdr_tree( NULL );
+	//printf( "xdr: %s\n", xdr );
+	//free(xdr);
 
 	return 0; // ok
 }
