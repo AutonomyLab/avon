@@ -1,4 +1,4 @@
-project(Avon)
+project(avon)
 SET( V_MAJOR 0 )
 SET( V_MINOR 1 )
 SET( V_BUGFIX 0 )
@@ -10,9 +10,10 @@ SET( AVON_APIVERSION ${V_MAJOR}.${V_MINOR} )
 ##############################################################################
 # FOO_MAKE_PKGCONFIG
 # Make a pkg-config file for a library
-MACRO (FOO_MAKE_PKGCONFIG _name _desc _extDeps _intDeps _cFlags _libFlags)
+MACRO (FOO_MAKE_PKGCONFIG _name _desc _version _extDeps _intDeps _cFlags _libFlags)
   SET (PKG_NAME ${_name})
   SET (PKG_DESC ${_desc})
+  SET (PKG_VERSION ${_version})
   SET (PKG_CFLAGS ${_cFlags})
   SET (PKG_LIBFLAGS ${_libFlags})
   SET (PKG_EXTERNAL_DEPS ${_extDeps})
@@ -27,7 +28,7 @@ MACRO (FOO_MAKE_PKGCONFIG _name _desc _extDeps _intDeps _cFlags _libFlags)
   INSTALL (FILES ${CMAKE_CURRENT_BINARY_DIR}/${_name}.pc DESTINATION lib/pkgconfig/ COMPONENT pkgconfig)
 ENDMACRO (FOO_MAKE_PKGCONFIG)
 
-FOO_MAKE_PKGCONFIG("avon" "HTTP interface for robot simulators" "" "" "" "")
+FOO_MAKE_PKGCONFIG( "avon" "HTTP interface for robot simulators" ${AVON_VERSION} "" "" "" "")
 
 #####################################
 # Build type cflags

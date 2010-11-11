@@ -6,7 +6,7 @@ includedir=${prefix}/include
 
 Name: @PKG_NAME@
 Description: @PKG_DESC@
-Version: @WEBSIM_VERSION@
+Version: @AVON_VERSION@
 Requires: @PKG_EXTERNAL_DEPS@
 Libs: -L${libdir} -l@PKG_NAME@ @PKG_LIBFLAGS@ @PKG_INTERNAL_DEPS@
-Cflags: -I${includedir}/websim @PKG_CFLAGS@
+Cflags: -I${includedir}/@PKG_NAME@ @PKG_CFLAGS@
