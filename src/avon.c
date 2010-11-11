@@ -21,40 +21,21 @@
 #include <event.h>
 #include <evhttp.h>
 
-// uthash-1.9.2 is distributed with the Avon source
-#include "uthash-1.9.2/src/utarray.h"
-#include "uthash-1.9.2/src/uthash.h"
-#include "uthash-1.9.2/src/utstring.h"
-
-// libjson-c [tested with v0.9]
-#include <json.h>
-
 // convenient callback typdef
 typedef void(*evhttp_cb_t)(struct evhttp_request *, void *); 
 
 #include "avon.h"
+#include "avon_internal.h"
 
 static const char* _package = "Avon";
 static const char* _version = "0.1";
 //static const char* FAVICONFILE = "/favicon.ico";
 
-// static allocation for model names makes the code very simple, but
-// will fail/crash if names exceed these lengths
-#define NAME_LEN_MAX 512
-#define TYPE_LEN_MAX 512
-
-typedef struct {
-  char id[NAME_LEN_MAX];  /* model name and hash table key */          
-  av_type_t type;  /* model name and hash table key */          
-  UT_hash_handle hh; /* makes this structure hashable */
-  UT_array* children; /* array of strings naming our children */
-} _node_t;
-
 // root node statically alocated
-_node_t _root;
+_av_node_t _root;
 
 // hash table handle
-_node_t* _tree = NULL;
+_av_node_t* _tree = NULL;
 
 // local, statically allocated server instance structure
 struct av
@@ -96,6 +77,29 @@ struct av
 } _av; // statically alocated instance - not thread safe!
 
 
+// defined in ./json.c
+char* json_format_pva( av_pva_t* );
+char* json_format_geom( av_geom_t* );
+char* json_format_data_ranger( av_msg_t* );
+char* json_format_cfg_ranger( av_msg_t* );
+char* json_tree( const char* );
+
+int json_parse_pva( const char*, av_pva_t*);
+
+static struct
+{
+  char* (*data)( av_msg_t* );
+  char* (*cmd)( av_msg_t* );
+  char* (*cfg)( av_msg_t* );
+} _json_format_fn[ AV_MODEL_TYPE_COUNT ] = 
+  { 
+	 {NULL,NULL,NULL}, // sim
+	 {NULL,NULL,NULL}, // generic
+	 {NULL,NULL,NULL}, // position2d
+	 { json_format_data_ranger, NULL, json_format_cfg_ranger }, // ranger
+	 {NULL,NULL,NULL}, // fidicual
+  };
+
 typedef struct
 {
   av_type_t type;
@@ -125,7 +129,7 @@ int av_init( const char* hostname,
 	_av.hostportname = strdup( buf );
 	
 	// json-c library setup
-	MC_SET_DEBUG(1);
+	//MC_SET_DEBUG(1);
 	
 	return 0; //ok
 }
@@ -138,7 +142,6 @@ void av_fini( void )
 	if( _av.rootdir) free(_av.rootdir);
 }
 
-char* json_tree( const char* name );
 
 void handle_tree( struct evhttp_request* req, void* dummy )
 {
@@ -307,162 +310,7 @@ void av_check()
 }    
 
 
-char* json_format_pva( av_pva_t* pva )
-{
-  assert(pva);
-  
-  uint64_t sec = pva->time / 1e6;
-  uint64_t usec = pva->time - (sec * 1e6);
-  
-  double *p = pva->p;
-  double *v = pva->v;
-  double *a = pva->a;
-  
-  char buf[2048];
-  snprintf( buf, sizeof(buf), 
-				"{ \"time\" : %llu.%llu\n"
-				"  \"pva\"  : [[ %.3f, %.3f, %.3f, %.3f, %.3f, %.3f ],\n"
-				"            [ %.3f, %.3f, %.3f, %.3f, %.3f, %.3f ],\n"
-				"            [ %.3f, %.3f, %.3f, %.3f, %.3f, %.3f ]]\n"
-				"}\n",
-				sec, usec,
-				p[0],p[1],p[2],p[3],p[4],p[5],
-				v[0],v[1],v[2],v[3],v[4],v[5],
-				a[0],a[1],a[2],a[3],a[4],a[5] );
-  
-  return strdup( buf );
-}
 
-char* json_format_geom( av_geom_t* g )
-{
-  assert(g);
-  
-  uint64_t sec = g->time / 1e6;
-  uint64_t usec = g->time - (sec * 1e6);
-  
-  char buf[2048];
-  snprintf( buf, sizeof(buf), 
-				"{ \"time\" : %llu.%llu, "
-				"  \"geom:\"  : { \"pose\" : [ %.3f, %.3f, %.3f, %.3f, %.3f, %.3f ],\n"
-				"            \"extent\" : [ %.3f, %.3f, %.3f ] }\n"
-				"}\n",
-				sec, usec, 
-				g->pose[0],g->pose[1],g->pose[2],g->pose[3],g->pose[4],g->pose[5],
-				g->extent[0], g->extent[1], g->extent[2] );
-  
-  return strdup( buf );
-}
-
-
-void uts_print_time( UT_string* s, uint64_t t )
-{
-	assert(s);	
-	uint64_t sec = t / 1e6;
-	uint64_t usec = t - (sec*1e6);
-	utstring_printf( s, "\"time\" : %lu.%u", (long unsigned int)sec, usec );
-}
-
-void print_double_array( UT_string* s, double v[], size_t len )
-{
-	assert(s);
-	assert(v);
-	assert(len>0);
-	
-	utstring_printf( s, "[" );
-	for( int i=0; i<len; i++ )
-		{
-			if( i > 0 )				
-				utstring_printf(s, "," );		
-			
-			utstring_printf(s, "%.3f", v[i] );
-		}
-	utstring_printf( s, "]" );
-}
-
-void print_named_double_array( UT_string* s, const char* key, double v[], size_t len, const char* suffix )
-{
-  utstring_printf( s, "\"%s\" : ", key );
-  print_double_array( s, v, len );
-  if( suffix )
-	 utstring_printf( s, "%s", suffix );	 
-}
-
-/* wrapper to hide macro thus cleaner syntax on use */
-UT_string* uts_new(void)
-{
-	UT_string* s;
-  utstring_new(s);	
-	return s;
-}
-
-char* uts_dup_free( UT_string* s )
-{
-	assert(s);
-  char* buf = strdup( utstring_body(s) );
-	assert(buf);
-  utstring_free(s);
-  return buf; // caller must free
-}	
-
-char* json_format_ranger( av_data_t* d )
-{
-  assert(d);
-  assert(d->type == AV_MODEL_RANGER);
-  assert(d->data);
-  const av_ranger_data_t* rd = d->data;
-  
-  UT_string* s = uts_new();
-  utstring_printf(s, "{ " );
-  uts_print_time(s, d->time );
-  utstring_printf(s, ",\n" );
-  utstring_printf(s, " \"type\" : \"ranger\", \n" );
-  utstring_printf(s, " \"transducer_count\" : %u, \n", rd->transducer_count );
-  utstring_printf(s, " \"transducers\" : [\n" );
-  
-  for( int i=0; i<rd->transducer_count; i++ )
-	 {
-		if( i > 0 )				
-		  utstring_printf(s, ",\n" );		
-
-		utstring_printf( s, "{ ") ;
-		print_named_double_array( s, "pose", rd->transducers[i].pose, 6, "," );
-		utstring_printf(s, " \"sample_count\" : %u, ", rd->transducers[i].sample_count );
-		utstring_printf(s, " \"samples\" : [" );
-		
-		for( int j=0; j<rd->transducers[i].sample_count;  j++ )
-		  {
-			 if( j > 0 )				
-				utstring_printf(s, "," );		
-			 print_double_array( s, rd->transducers[i].samples[j], 4 );			 
-		  }
-		utstring_printf(s, " ]" );
-		utstring_printf(s, " }" );
-	 }
-  utstring_printf(s, " ]" );
-  utstring_printf(s, " }\n" );
-  
-  return uts_dup_free(s);
-}
-
-char* json_format_data( av_data_t* data )
-{
-  char* json = NULL;
-  
-  switch( data->type )
-	 {
-	 case AV_MODEL_POSITION2D:
-		puts( "interpret data as p2d" );
-		break;
-	 case AV_MODEL_RANGER:
-		puts( "interpret data as ranger" );
-		json = json_format_ranger( data );
-		break;			
-	 default:
-		printf( "JSON formatting of data type %d not implemented\n", data->type );
-	 }
-  
-	return json;
-}
 
 void handle_data( struct evhttp_request* req, type_handle_pair_t* thp )
 {	
@@ -471,9 +319,9 @@ void handle_data( struct evhttp_request* req, type_handle_pair_t* thp )
 	 case EVHTTP_REQ_GET:
 		if( _av.data_get[thp->type] )
 		  {
-				av_data_t data;
+				av_msg_t data;
 				(*_av.data_get[thp->type])( thp->handle, &data );			 
-				char* json = json_format_data( &data );
+				char* json = _json_format_fn[thp->type].data( &data );
 				assert(json);				
 				reply_success( req, HTTP_OK, "data GET OK", json );
 				free(json);
@@ -503,6 +351,45 @@ void handle_data( struct evhttp_request* req, type_handle_pair_t* thp )
 	 }
 }
 
+void handle_cfg( struct evhttp_request* req, type_handle_pair_t* thp )
+{	
+  switch(req->type )
+	 {
+	 case EVHTTP_REQ_GET:
+		if( _av.cfg_get[thp->type] )
+		  {
+			 av_msg_t cfg;
+			 (*_av.cfg_get[thp->type])( thp->handle, &cfg );			 
+			 char* json = _json_format_fn[thp->type].cfg( &cfg );
+			 assert(json);				
+			 reply_success( req, HTTP_OK, "cfg GET OK", json );
+			 free(json);
+		  }
+		else			
+		  reply_error( req, HTTP_NOTFOUND, "cfg GET not found: No callback installed for type" );									
+		break;
+		
+	 case EVHTTP_REQ_HEAD:						
+		 reply_success( req, HTTP_OK, "cfg HEAD OK", NULL );									
+		 break;
+		 
+	 case EVHTTP_REQ_POST:
+		{
+		  /* 				if( _av.cfg */
+		  /* 				av_cfg_t cfg; */
+		  /* 				if( parse_json_cfg( req->payload, &cfg ) != 0 ) */
+		  /* 					puts( "ERROR: failed to parse JSON on POST cfg" ); */
+		  /* 				else				 */
+		  /* 					(*_av.cfg_set)( handle, &cfg );  */
+		  
+		  reply_error( req, HTTP_NOTMODIFIED, "cfg POST error: cfg cannot be set." );									
+		}	break;	
+	 default:
+		printf( "warning: unknown request type %d in handle_cfg\n", req->type );
+		reply_error( req, HTTP_NOTMODIFIED, "cfg unrecognized action" );						
+	 }
+}
+
 
 void handle_pva_get( struct evhttp_request* req, void* handle )
 {
@@ -515,38 +402,6 @@ void handle_pva_get( struct evhttp_request* req, void* handle )
   free(json);
 }
 
-void unpack_json_double_array( json_object* job, double* arr, const size_t len )
-{
-  assert( json_object_array_length(job) == len );
-  
-  for( size_t i=0; i<len; i++ )
-	 {
-		json_object* d = json_object_array_get_idx( job, i );
-		assert(d);
-		arr[i] = json_object_get_double( d );
-	 }
-}
-
-void unpack_json_pva( json_object* job, av_pva_t* pva )
-{
-  assert( json_object_array_length(job) == 3 );
-  
-  json_object* p_array = json_object_array_get_idx( job, 0 );
-  json_object* v_array = json_object_array_get_idx( job, 1 );
-  json_object* a_array = json_object_array_get_idx( job, 2 );
-  
-  unpack_json_double_array( p_array, pva->p, 6 );
-  unpack_json_double_array( v_array, pva->v, 6 );
-  unpack_json_double_array( a_array, pva->a, 6 );
-}
-
-int parse_json_pva( const char* buf, av_pva_t* pva )
-{
-  json_object* job = json_tokener_parse( buf );  
-  json_object* pva_array = json_object_object_get(job, "pva");
-  unpack_json_pva( pva_array, pva );
-  return 0; // ok
-}
 
 void handle_pva_set( struct evhttp_request* req, void* handle )
 {
@@ -560,7 +415,7 @@ void handle_pva_set( struct evhttp_request* req, void* handle )
   printf( "received %lu bytes\n", buflen );
   printf( "   %s\n", buf );
 
-  int result = parse_json_pva( buf, &pva );
+  int result = json_parse_pva( buf, &pva );
 
   if( result != 0 )			  
 	 reply_error( req, HTTP_NOTMODIFIED, "pva POST failed: failed to parse JSON payload." );						
@@ -632,7 +487,7 @@ void handle_geom( struct evhttp_request* req, void* handle )
 
 void print_table( void )
 {
-	_node_t *s;
+	_av_node_t *s;
 	for(s=_tree; s; s=s->hh.next) 
 		{
 			printf("key/id: %s type: %u children: [ ", s->id, s->type );
@@ -656,7 +511,7 @@ void tree_insert_model( const char* name,
 			strncpy(_root.id,"sim",strlen("sim"));
 			_root.type = AV_MODEL_SIM;
 			utarray_new( _root.children, &ut_str_icd ); // initialize string array 			
-			_node_t* rootp = &_root; // macro needs a pointer arg
+			_av_node_t* rootp = &_root; // macro needs a pointer arg
 			HASH_ADD_STR( _tree, id, rootp );
 	 }
   
@@ -665,9 +520,9 @@ void tree_insert_model( const char* name,
   
   // insert this new node into the tree
   
-  _node_t *node = malloc( sizeof(_node_t));
+  _av_node_t *node = malloc( sizeof(_av_node_t));
   assert(node);
-  bzero(node,sizeof(_node_t));
+  bzero(node,sizeof(_av_node_t));
   
   strncpy(node->id,name,NAME_LEN_MAX);
 	node->type = type;
@@ -680,7 +535,7 @@ void tree_insert_model( const char* name,
   assert( _tree != NULL );
   
   // add the child to the parent  
-  _node_t *parent_node = NULL;
+  _av_node_t *parent_node = NULL;
   
   if( parent_name )
 	 HASH_FIND_STR( _tree, parent_name, parent_node );
@@ -692,43 +547,6 @@ void tree_insert_model( const char* name,
   utarray_push_back( parent_node->children, &name );
 }
 
-
-char* json_tree( const char* name )
-{
-  UT_string* s;
-  utstring_new(s);
-	
-	_node_t* node = NULL;
-	if( name )
-		HASH_FIND_STR( _tree, name, node );
-	else
-		node = &_root;
-	assert( node );
-
-	utstring_printf(s, "{ \"name\" : \"%s\", \"type\": %d, \"children\" : [", 
-									node->id, node->type );
-	
-	int first = 1;
-  char** p = NULL;
-  while ( (p=(char**)utarray_next(node->children,p))) 
-		{
-			// print commas before all but the first array entry
-			if( first )
-				first = 0;
-			else
-				utstring_printf(s, "," );
-					
-			char* json = json_tree( *p );
-			utstring_printf(s, " %s", json );
-			free(json);
-		}	
-	
-	utstring_printf(s, "] }" );
-	
-  //printf("utstring: %s\n", utstring_body(s));
-	
-	return uts_dup_free(s); // caller must free
-}
 
 int av_register_model( const char* name, 
 											 av_type_t type, 
@@ -759,11 +577,11 @@ int av_register_model( const char* name,
   evhttp_set_cb( _av.eh, buf, (evhttp_cb_t)handle_data, thp );
 	
 /*   snprintf( buf, 256, "/%s/cmd", name ); */
-/*   evhttp_set_cb( av->eh, buf, (evhttp_cb_t)handle_cmd[type], handle ); */
-	
-/*   snprintf( buf, 256, "/%s/cfg", name ); */
-/*   evhttp_set_cb( av->eh, buf, (evhttp_cb_t)handle_cfg[type], handle );	 */
-
+/*   evhttp_set_cb( av->eh, buf, (evhttp_cb_t)handle_cmd[type], thp ); */
+  
+  snprintf( buf, 256, "/%s/cfg", name ); 
+  evhttp_set_cb( _av.eh, buf, (evhttp_cb_t)handle_cfg, thp );	 
+  
 	//print_table();
 
 	char* json = json_tree( NULL );
@@ -797,10 +615,10 @@ int av_install_clock_callbacks( av_clock_get_t clock_get, void* obj )
 
 
 int av_install_typed_callbacks( av_type_t type,
-																av_data_get_t data_get,
-																av_cmd_set_t cmd_set,
-																av_cfg_set_t cfg_set,
-																av_cfg_get_t cfg_get )
+										  av_data_get_t data_get,
+										  av_cmd_set_t cmd_set,
+										  av_cfg_set_t cfg_set,
+										  av_cfg_get_t cfg_get )
 {
   _av.data_get[type] = data_get;
   _av.cmd_set[type] = cmd_set;

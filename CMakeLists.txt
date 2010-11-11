@@ -78,8 +78,8 @@ link_directories(
 )
 
 
-add_library(avon SHARED src/avon.c )
-add_library(avon-static STATIC src/avon.c )
+add_library(avon SHARED src/avon.c src/json.c )
+add_library(avon-static STATIC src/avon.c src/json.c )
 
 # Set output name to be the same as shared lib (may not work on Windows)
 set_target_properties(avon-static PROPERTIES OUTPUT_NAME avon)

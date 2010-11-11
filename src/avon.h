@@ -10,7 +10,7 @@
 #include <time.h> // for time_t
 #include <stdint.h> // for uint16_t
 
-const uint16_t AV_DEFAULT_PORT = 8000;
+#define AV_DEFAULT_PORT 8000
 
 typedef enum
 	{
@@ -89,20 +89,20 @@ typedef struct
   av_ranger_transducer_data_t transducers[AV_RANGER_TRANSDUCERS_MAX]; 
 } av_ranger_data_t;
 
-typedef struct
-{
-	/** the pose and size of the transducer object */
-	av_geom_t geom;
-	/** the bounds of the field-of-view [0] is bearing, [1] is azimuth, [3] is range */
-	av_bounds_t fov[3];
-		
-} av_transducer_t;
 
 typedef struct
 {
-	uint64_t time;
-	uint32_t transducer_count;
-	av_transducer_t transducers[AV_RANGER_TRANSDUCERS_MAX];
+  uint64_t time;
+  uint32_t transducer_count;
+  
+  struct
+  {
+	 /** the pose and size of the transducer object */
+	 av_geom_t geom;
+	 /** the bounds of the field-of-view [0] is bearing, [1] is azimuth, [3] is range */
+	 av_bounds_t fov[3];	 
+  } transducers[AV_RANGER_TRANSDUCERS_MAX];
+  
 } av_ranger_cfg_t;
 
 //---------------------------------------------------------
@@ -113,31 +113,17 @@ typedef struct
   av_type_t type;
   const void* data;
   size_t len;
-} av_data_t;
-
-typedef struct
-{
-	uint64_t time;
-	av_type_t type;
-	void* cmd;
-} av_cmd_t;
-
-typedef struct 
-{
-	uint64_t time;
-	av_type_t type;
-	void* cfg;
-} av_cfg_t;
+} av_msg_t;
 
 typedef int (*av_pva_set_t)( void* obj, av_pva_t* pva );
 typedef int (*av_pva_get_t)( void* obj, av_pva_t* pva );
 typedef int (*av_geom_set_t)( void* obj, av_geom_t* geom );
 typedef int (*av_geom_get_t)( void* obj, av_geom_t* geom );
 
-typedef int (*av_data_get_t)( void* obj, av_data_t* data );
-typedef int (*av_cmd_set_t)( void* obj, av_cmd_t* cmd );
-typedef int (*av_cfg_set_t)( void* obj, av_cfg_t* cfg );
-typedef int (*av_cfg_get_t)( void* obj, av_cfg_t* cfg );
+typedef int (*av_data_get_t)( void* obj, av_msg_t* data );
+typedef int (*av_cmd_set_t)( void* obj, av_msg_t* cmd );
+typedef int (*av_cfg_set_t)( void* obj, av_msg_t* cfg );
+typedef int (*av_cfg_get_t)( void* obj, av_msg_t* cfg );
 
 typedef uint64_t (*av_clock_get_t)(void* obj);
 
@@ -176,3 +162,4 @@ int av_install_typed_callbacks( av_type_t type,
 																av_cmd_set_t cmd_set,
 																av_cfg_set_t cfg_set,
 																av_cfg_get_t cfg_get );
+
