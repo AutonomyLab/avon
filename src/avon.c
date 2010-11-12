@@ -79,11 +79,15 @@ struct av
 
 /* XDR formatting functions defined elsewhere, so that alternative
 	 schemes can be dropped in. */
+char* xdr_tree( const char* );
 char* xdr_format_pva( av_pva_t* );
 char* xdr_format_geom( av_geom_t* );
+
 char* xdr_format_data_ranger( av_msg_t* );
 char* xdr_format_cfg_ranger( av_msg_t* );
-char* xdr_tree( const char* );
+
+char* xdr_format_data_fiducial( av_msg_t* );
+char* xdr_format_cfg_fiducial( av_msg_t* );
 
 int xdr_parse_pva( const char*, av_pva_t*);
 
@@ -97,9 +101,9 @@ static struct
   { 
 	 {NULL,NULL,NULL}, // sim
 	 {NULL,NULL,NULL}, // generic
-	 {NULL,NULL,NULL}, // position2d
+	 //{NULL,NULL,NULL}, // position2d
 	 { xdr_format_data_ranger, NULL, xdr_format_cfg_ranger }, // ranger
-	 {NULL,NULL,NULL}, // fidicual
+	 { xdr_format_data_fiducial, NULL, xdr_format_cfg_fiducial}, // fidicual
   };
 
 typedef struct

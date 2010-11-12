@@ -221,6 +221,74 @@ char* xdr_format_cfg_ranger( av_msg_t* d )
   return uts_dup_free(s);
 }
 
+char* xdr_format_cfg_fiducial( av_msg_t* d )
+{
+  assert(d);
+  assert(d->type == AV_MODEL_FIDUCIAL);
+  assert(d->data);
+  const av_fiducial_cfg_t* cfg = d->data;
+	
+  UT_string* s = uts_new();
+  utstring_printf(s, "{ " );
+  uts_print_time(s, d->time );
+  utstring_printf(s, ",\n" );
+  utstring_printf(s, "\"type\" : \"fiducial\", \n" );
+
+	utstring_printf(s, "\"fov\" : [[%.3f,%.3f], [%.3f,%.3f], [%.3f,%.3f]] ",
+									cfg->fov[0].min,
+									cfg->fov[0].max,
+									cfg->fov[1].min,
+									cfg->fov[1].max,
+									cfg->fov[2].min,
+									cfg->fov[2].max );
+
+  utstring_printf(s, " }\n" );
+  
+  return uts_dup_free(s);
+}
+
+char* xdr_format_fiducial( av_fiducial_t* f )
+{
+  UT_string* s = uts_new();
+  utstring_printf(s, "{ " );	
+	print_named_double_array( s, "pose", f->pose, 3, "," );
+	char* g = xdr_format_geom( &f->geom );		
+	utstring_printf(s, "%s", g );
+	free(g);
+  utstring_printf(s, "}" );
+  return uts_dup_free(s);
+}
+
+char* xdr_format_data_fiducial( av_msg_t* d )
+{
+  assert(d);
+  assert(d->type == AV_MODEL_FIDUCIAL);
+  assert(d->data);
+  const av_fiducial_data_t* fid = d->data;
+
+  UT_string* s = uts_new();
+  utstring_printf(s, "{ " );
+  uts_print_time(s, d->time );
+  utstring_printf(s, ",\n" );
+  utstring_printf(s, " \"type\" : \"fiducial\", \n" );
+  utstring_printf(s, " \"fiducial_count\" : %u, \n", fid->fiducial_count );
+  utstring_printf(s, " \"fiducials\" : [\n" );
+  
+  for( int i=0; i<fid->fiducial_count; i++ )
+	 {
+		 if( i > 0 )				
+		  utstring_printf(s, ",\n" );		
+		 
+		 char* f = xdr_format_fiducial( &fid->fiducials[i] );
+		 utstring_printf( s, "%s", f );
+		 free(f);
+	 }
+  utstring_printf(s, " ]" );
+  utstring_printf(s, " }\n" );
+  
+  return uts_dup_free(s);
+
+}
 
 void unpack_json_double_array( json_object* job, double* arr, const size_t len )
 {

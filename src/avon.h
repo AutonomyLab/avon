@@ -16,7 +16,7 @@ typedef enum
 	{
 		AV_MODEL_SIM = 0,
 		AV_MODEL_GENERIC,
-		AV_MODEL_POSITION2D,
+		//AV_MODEL_POSITION2D,
 		AV_MODEL_RANGER,
 		AV_MODEL_FIDUCIAL,
 		AV_MODEL_TYPE_COUNT // must be the last entry
@@ -46,6 +46,75 @@ typedef struct
 	double min, max;
 } av_bounds_t;
 
+// - POSITION2D --------------------------------------------
+
+/*  hmm, given PVA support for every model, maybe it's not necessary to */
+/*  not provide a special p2d model type? Just don't support position */
+/* control directly then there's nothing to do here. think about this
+	 more? */
+
+/* typedef struct */
+/* { */
+/* 	uint64_t time; */
+
+/* 	enum  */
+/* 		{ */
+/* 			AV_POSITION2D_CMD_MODE_SPEED = 0, */
+/* 			AV_POSITION2D_CMD_MODE_POSITION */
+/* 		} mode; */
+	
+/* 	/\** [0]=x, [1]=y, [2]=yaw, pose or speed, depending on the mode. *\/ */
+/* 	double value[3];  */
+
+/* } av_position2d_cmd_t; */
+
+/* typedef struct */
+/* { */
+/* 	uint64_t time; */
+
+/* 	enum  */
+/* 		{ */
+/* 			AV_POSITION2D_CMD_MODE_SPEED = 0, */
+/* 			AV_POSITION2D_CMD_MODE_POSITION */
+/* 		} mode; */
+	
+/* 	/\** [0]=x, [1]=y, [2]=yaw, pose or speed, depending on the mode. *\/ */
+/* 	double goal_value[3]; */
+/* 	/\** [0]=x, [1]=y, [2]=yaw, pose or speed, depending on the mode. *\/ */
+/* 	double actual_value[3]; */
+
+/* 	bool stall; */
+/* } av_position2d_data_t */
+
+//- FIDUCIAL -----------------------------------------------
+
+#define AV_FIDUCIALS_DETECTED_MAX 1024
+
+typedef struct
+{
+	/** pose of the fiducial in spherical coordinates, where [0] is the
+			bearing in radians, [1] is the azimuth in radians, [2] is the range
+			in meters. */
+	double pose[3];
+	/** pose and size of the fiducial in its own local coordinate
+			system, with origin at [pose] */
+	av_geom_t geom;
+	uint64_t id;
+} av_fiducial_t;
+
+typedef struct
+{
+	uint64_t time;
+	uint32_t fiducial_count;
+	av_fiducial_t fiducials[AV_FIDUCIALS_DETECTED_MAX];
+} av_fiducial_data_t;
+
+typedef struct
+{
+	/** the bounds of the field-of-view [0] is bearing, [1] is azimuth, [3] is range */
+	 av_bounds_t fov[3];	 
+} av_fiducial_cfg_t;
+
 //- RANGER --------------------------------------------------
 
 #define AV_RANGER_TRANSDUCERS_MAX 64
@@ -60,7 +129,7 @@ enum
   };
 
 typedef struct
-{
+{ 
   uint64_t time;
   
   /** origin of the ranger beams in local coordinates (x,y,z,r,p,a) */
