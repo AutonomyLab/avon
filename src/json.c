@@ -139,11 +139,8 @@ char* xdr_format_geom( const av_geom_t* g )
   
   char buf[2048];
   snprintf( buf, sizeof(buf), 
-				"{ \"time\" : %llu.%llu, "
-				"  \"geom:\"  : { \"pose\" : [ %.3f, %.3f, %.3f, %.3f, %.3f, %.3f ],\n"
-				"            \"extent\" : [ %.3f, %.3f, %.3f ] }\n"
-				"}\n",
-				sec, usec, 
+				"{ \"pose\" : [ %.3f, %.3f, %.3f, %.3f, %.3f, %.3f ], "
+						"\"extent\" : [ %.3f, %.3f, %.3f ] }",
 				g->pose[0],g->pose[1],g->pose[2],g->pose[3],g->pose[4],g->pose[5],
 				g->extent[0], g->extent[1], g->extent[2] );
   
@@ -251,9 +248,9 @@ char* xdr_format_fiducial( av_fiducial_t* f )
 {
   UT_string* s = uts_new();
   utstring_printf(s, "{ " );	
-	print_named_double_array( s, "pose", f->pose, 3, "," );
+	print_named_double_array( s, "pose", f->pose, 3, ", " );
 	char* g = xdr_format_geom( &f->geom );		
-	utstring_printf(s, "%s", g );
+	utstring_printf(s, "\"geom\" : \"%s\"", g );
 	free(g);
   utstring_printf(s, "}" );
   return uts_dup_free(s);
