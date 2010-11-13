@@ -69,10 +69,10 @@ struct av
 	av_geom_get_t geom_get;
 
 	// store different data/cmd/cfg callbacks for each type of model
-	av_data_get_t data_get[AV_MODEL_TYPE_COUNT];
-	av_cmd_set_t cmd_set[AV_MODEL_TYPE_COUNT];
-	av_cfg_get_t cfg_get[AV_MODEL_TYPE_COUNT];
-	av_cfg_set_t cfg_set[AV_MODEL_TYPE_COUNT];
+	av_data_get_t data_get[AV_INTERFACE_COUNT];
+	av_cmd_set_t cmd_set[AV_INTERFACE_COUNT];
+	av_cfg_get_t cfg_get[AV_INTERFACE_COUNT];
+	av_cfg_set_t cfg_set[AV_INTERFACE_COUNT];
 	
 } _av; // statically alocated instance - not thread safe!
 
@@ -97,7 +97,7 @@ static struct
   char* (*data)( av_msg_t* );
   char* (*cmd)( av_msg_t* );
   char* (*cfg)( av_msg_t* );
-} _xdr_format_fn[ AV_MODEL_TYPE_COUNT ] = 
+} _xdr_format_fn[ AV_INTERFACE_COUNT ] = 
   { 
 	 {NULL,NULL,NULL}, // sim
 	 {NULL,NULL,NULL}, // generic
@@ -108,9 +108,9 @@ static struct
 
 typedef struct
 {
-  av_type_t type;
+  av_interface_t interface;
   void* handle;
-} type_handle_pair_t;
+} interface_handle_pair_t;
 
 int av_init( const char* hostname, 
 						 const uint16_t port, 
@@ -344,24 +344,29 @@ void av_check()
 }    
 
 
-
-
-void handle_data( struct evhttp_request* req, type_handle_pair_t* thp )
+void handle_data( struct evhttp_request* req, interface_handle_pair_t* ihp )
 {	
+	assert(req);
+	assert(ihp);
+	assert(ihp->handle);
+
+	av_interface_t interface = ihp->interface;
+	void* handle = ihp->handle;
+	
   switch(req->type )
 	 {
 	 case EVHTTP_REQ_GET:
-		if( _av.data_get[thp->type] && _xdr_format_fn[thp->type].data )
+		if( _av.data_get[interface] && _xdr_format_fn[interface].data )
 		  {
 				av_msg_t data;
-				(*_av.data_get[thp->type])( thp->handle, &data );			 
-				char* xdr = _xdr_format_fn[thp->type].data( &data );
+				(*_av.data_get[interface])( handle, &data );			 
+				char* xdr = _xdr_format_fn[interface].data( &data );
 				assert(xdr);				
 				reply_success( req, HTTP_OK, "data GET OK", xdr );
 				free(xdr);
 		  }
 		else			
-		  reply_error( req, HTTP_NOTFOUND, "data GET not found: No callback and/or formatter installed for type" );									
+		  reply_error( req, HTTP_NOTFOUND, "data GET not found: No callback and/or formatter installed for interface" );									
 		break;
 		
 	 case EVHTTP_REQ_HEAD:						
@@ -384,22 +389,25 @@ void handle_data( struct evhttp_request* req, type_handle_pair_t* thp )
 	 }
 }
 
-void handle_cfg( struct evhttp_request* req, type_handle_pair_t* thp )
+void handle_cfg( struct evhttp_request* req, interface_handle_pair_t* ihp )
 {	
+	av_interface_t interface = ihp->interface;
+	void* handle = ihp->handle;
+
   switch(req->type )
 	 {
 	 case EVHTTP_REQ_GET:
-		if( _av.cfg_get[thp->type]  && _xdr_format_fn[thp->type].cfg )
+		if( _av.cfg_get[interface]  && _xdr_format_fn[interface].cfg )
 		  {
 			 av_msg_t cfg;
-			 (*_av.cfg_get[thp->type])( thp->handle, &cfg );			 
-			 char* xdr = _xdr_format_fn[thp->type].cfg( &cfg );
+			 (*_av.cfg_get[interface])( handle, &cfg );			 
+			 char* xdr = _xdr_format_fn[interface].cfg( &cfg );
 			 assert(xdr);				
 			 reply_success( req, HTTP_OK, "cfg GET OK", xdr );
 			 free(xdr);
 		  }
 		else			
-		  reply_error( req, HTTP_NOTFOUND, "cfg GET not found: No callback and/or formatter installed for type" );									
+		  reply_error( req, HTTP_NOTFOUND, "cfg GET not found: No callback and/or formatter installed for interface" );									
 		break;
 		
 	 case EVHTTP_REQ_HEAD:						
@@ -426,6 +434,9 @@ void handle_cfg( struct evhttp_request* req, type_handle_pair_t* thp )
 
 void handle_pva_get( struct evhttp_request* req, void* handle )
 {
+	assert(req);
+	assert(handle);
+
   av_pva_t pva;
   (*_av.pva_get)( handle, &pva );
   
@@ -438,8 +449,9 @@ void handle_pva_get( struct evhttp_request* req, void* handle )
 
 void handle_pva_set( struct evhttp_request* req, void* handle )
 {
-  av_pva_t pva;
- 													 
+	assert(req);
+	assert(handle);
+
   const size_t buflen = EVBUFFER_LENGTH(req->input_buffer);  
   char* buf = malloc(buflen+1); // space for terminator
   memcpy( buf, EVBUFFER_DATA(req->input_buffer), buflen );  
@@ -448,6 +460,7 @@ void handle_pva_set( struct evhttp_request* req, void* handle )
   printf( "received %lu bytes\n", buflen );
   printf( "   %s\n", buf );
 
+  av_pva_t pva;
   int result = xdr_parse_pva( buf, &pva );
 
   if( result != 0 )			  
@@ -464,6 +477,9 @@ void handle_pva_set( struct evhttp_request* req, void* handle )
 
 void handle_pva( struct evhttp_request* req, void* handle )
 {
+	assert(req);
+	assert(handle);
+
   switch(req->type )
 	 {
 	 case EVHTTP_REQ_GET:
@@ -483,6 +499,9 @@ void handle_pva( struct evhttp_request* req, void* handle )
 
 void handle_geom( struct evhttp_request* req, void* handle )
 {
+	assert(req);
+	assert(handle);
+
   switch(req->type )
 	 {
 	 case EVHTTP_REQ_GET:
@@ -522,7 +541,7 @@ void print_table( void )
 	_av_node_t *s;
 	for(s=_tree; s; s=s->hh.next) 
 		{
-			printf("key/id: %s type: %u children: [ ", s->id, s->type );
+			printf("key/id: %s interface: %u children: [ ", s->id, s->interface );
 			
 			char** p = NULL;
 			while ( (p=(char**)utarray_next(s->children,p))) 
@@ -533,15 +552,20 @@ void print_table( void )
 }
 
 void tree_insert_model( const char* name, 
-												av_type_t type,
+												const char* prototype,
+												av_interface_t interface,
 												const char* parent_name )
 {
+	assert(name);
+	
   if( _tree == NULL ) // i.e. nothing in the tree yet
 		{
 			// set up the root node for the sim itself
 			bzero(&_root,sizeof(_root));
 			strncpy(_root.id,"sim",strlen("sim"));
-			_root.type = AV_MODEL_SIM;
+			strncpy(_root.prototype, _root.id, strlen(_root.id));
+
+			_root.interface = AV_INTERFACE_SIM;
 			utarray_new( _root.children, &ut_str_icd ); // initialize string array 			
 			_av_node_t* rootp = &_root; // macro needs a pointer arg
 			HASH_ADD_STR( _tree, id, rootp );
@@ -557,7 +581,8 @@ void tree_insert_model( const char* name,
   bzero(node,sizeof(_av_node_t));
   
   strncpy(node->id,name,NAME_LEN_MAX);
-	node->type = type;
+	node->interface = interface;
+	strncpy( node->prototype, prototype, strlen(prototype));
   utarray_new( node->children, &ut_str_icd ); // initialize string array 
   
   // add the node to the tree, keyed on the name  
@@ -581,14 +606,15 @@ void tree_insert_model( const char* name,
 
 
 int av_register_model( const char* name, 
-											 av_type_t type, 
+											 const char* prototype,
+											 av_interface_t interface, 
 											 const char* parent_name, 
 											 void* handle )
 {
   if( _av.verbose) 
 	 printf( "[Avon] registering \"%s\" child of \"%s\"\n", name, parent_name );
   
-  tree_insert_model( name, type, parent_name );
+  tree_insert_model( name, prototype, interface, parent_name );
 
   // now install callbacks for this node
 
@@ -600,19 +626,19 @@ int av_register_model( const char* name,
   snprintf( buf, 256, "/%s/geom", name );
   evhttp_set_cb( _av.eh, buf, (evhttp_cb_t)handle_geom, handle );
   
-  type_handle_pair_t* thp = malloc(sizeof(thp));
-  assert(thp);
-  thp->type = type;
-  thp->handle = handle;
+  interface_handle_pair_t* ihp = malloc(sizeof(ihp));
+  assert(ihp);
+  ihp->interface = interface;
+  ihp->handle = handle;
   
   snprintf( buf, 256, "/%s/data", name );
-  evhttp_set_cb( _av.eh, buf, (evhttp_cb_t)handle_data, thp );
+  evhttp_set_cb( _av.eh, buf, (evhttp_cb_t)handle_data, ihp );
 	
 /*   snprintf( buf, 256, "/%s/cmd", name ); */
-/*   evhttp_set_cb( av->eh, buf, (evhttp_cb_t)handle_cmd[type], thp ); */
+/*   evhttp_set_cb( av->eh, buf, (evhttp_cb_t)handle_cmd[interface], ihp ); */
   
   snprintf( buf, 256, "/%s/cfg", name ); 
-  evhttp_set_cb( _av.eh, buf, (evhttp_cb_t)handle_cfg, thp );	 
+  evhttp_set_cb( _av.eh, buf, (evhttp_cb_t)handle_cfg, ihp );	 
   
 	//print_table();
 
@@ -646,16 +672,16 @@ int av_install_clock_callbacks( av_clock_get_t clock_get, void* obj )
 }
 
 
-int av_install_typed_callbacks( av_type_t type,
-										  av_data_get_t data_get,
-										  av_cmd_set_t cmd_set,
-										  av_cfg_set_t cfg_set,
-										  av_cfg_get_t cfg_get )
+int av_install_interface_callbacks( av_interface_t interface,
+																		av_data_get_t data_get,
+																		av_cmd_set_t cmd_set,
+																		av_cfg_set_t cfg_set,
+																		av_cfg_get_t cfg_get )
 {
-  _av.data_get[type] = data_get;
-  _av.cmd_set[type] = cmd_set;
-  _av.cfg_set[type] = cfg_set;
-  _av.cfg_get[type] = cfg_get;	
+  _av.data_get[interface] = data_get;
+  _av.cmd_set[interface] = cmd_set;
+  _av.cfg_set[interface] = cfg_set;
+  _av.cfg_get[interface] = cfg_get;	
   
 	return 0; //ok
 }

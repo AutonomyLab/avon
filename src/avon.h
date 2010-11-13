@@ -14,13 +14,13 @@
 
 typedef enum
 	{
-		AV_MODEL_SIM = 0,
-		AV_MODEL_GENERIC,
-		//AV_MODEL_POSITION2D,
-		AV_MODEL_RANGER,
-		AV_MODEL_FIDUCIAL,
-		AV_MODEL_TYPE_COUNT // must be the last entry
-	} av_type_t;
+		AV_INTERFACE_SIM = 0,
+		AV_INTERFACE_GENERIC,
+		//AV_INTERFACE_POSITION2D,
+		AV_INTERFACE_RANGER,
+		AV_INTERFACE_FIDUCIAL,
+		AV_INTERFACE_COUNT // must be the last entry
+	} av_interface_t;
 
 /** Pose in parent's CS, velocity and acceleration in local CS, all in
 	 6 axes. */
@@ -179,7 +179,7 @@ typedef struct
 typedef struct
 {
   uint64_t time;
-  av_type_t type;
+  av_interface_t interface;
   const void* data;
   size_t len;
 } av_msg_t;
@@ -215,7 +215,8 @@ void av_wait( void );
 void av_check();
 
 int av_register_model( const char* name, 
-											 av_type_t type, 
+											 const char* prototype,
+											 av_interface_t interface, 
 											 const char* parent, 
 											 void* handle );
 
@@ -226,9 +227,9 @@ int av_install_generic_callbacks( av_pva_set_t pva_set,
 																	av_geom_set_t geom_set, 
 																	av_geom_get_t geom_get );
 
-int av_install_typed_callbacks( av_type_t type,
-																av_data_get_t data_get,
-																av_cmd_set_t cmd_set,
-																av_cfg_set_t cfg_set,
-																av_cfg_get_t cfg_get );
+int av_install_interface_callbacks( av_interface_t interface,
+																		av_data_get_t data_get,
+																		av_cmd_set_t cmd_set,
+																		av_cfg_set_t cfg_set,
+																		av_cfg_get_t cfg_get );
 

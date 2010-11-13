@@ -12,7 +12,10 @@
 // not for users
 typedef struct {
   char id[NAME_LEN_MAX];  /* model name and hash table key */          
-  av_type_t type;  /* model name and hash table key */          
+	char prototype[NAME_LEN_MAX]; /* clue to clients about what kind of
+																	 object this is.*/
+	av_interface_t interface; /* specifies which message handlers are
+															 called for this model */
   UT_hash_handle hh; /* makes this structure hashable */
   UT_array* children; /* array of strings naming our children */
 } _av_node_t;

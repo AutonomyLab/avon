@@ -22,7 +22,7 @@ void uts_print_time( UT_string* s, uint64_t t )
 	utstring_printf( s, "\"time\" : %lu.%u", (long unsigned int)sec, usec );
 }
 
-void print_double_array( UT_string* s, double v[], size_t len )
+void print_double_array( UT_string* s, const double v[], size_t len )
 {
 	assert(s);
 	assert(v);
@@ -39,7 +39,7 @@ void print_double_array( UT_string* s, double v[], size_t len )
 	utstring_printf( s, "]" );
 }
 
-void print_named_double_array( UT_string* s, const char* key, double v[], size_t len, const char* suffix )
+void print_named_double_array( UT_string* s, const char* key, const double v[], size_t len, const char* suffix )
 {
   utstring_printf( s, "\"%s\" : ", key );
   print_double_array( s, v, len );
@@ -79,8 +79,10 @@ char* xdr_tree( const char* name )
 		node = &_root;
 	assert( node );
 
-	utstring_printf(s, "{ \"name\" : \"%s\", \"type\": %d, \"children\" : [", 
-									node->id, node->type );
+	utstring_printf(s, "{ \"name\" : \"%s\", \"prototype\" : \"%s\", \"interface\": %d, \"children\" : [", 
+									node->id, 
+									node->prototype,
+									node->interface );
 	
 	int first = 1;
   char** p = NULL;
@@ -117,7 +119,7 @@ char* xdr_format_pva( const av_pva_t* pva )
   
   char buf[2048];
   snprintf( buf, sizeof(buf), 
-				"{ \"time\" : %llu.%llu\n"
+				"{ \"time\" : %llu.%llu,\n"
 				"  \"pva\"  : [[ %.3f, %.3f, %.3f, %.3f, %.3f, %.3f ],\n"
 				"            [ %.3f, %.3f, %.3f, %.3f, %.3f, %.3f ],\n"
 				"            [ %.3f, %.3f, %.3f, %.3f, %.3f, %.3f ]]\n"
@@ -133,10 +135,7 @@ char* xdr_format_pva( const av_pva_t* pva )
 char* xdr_format_geom( const av_geom_t* g )
 {
   assert(g);
-  
-  uint64_t sec = g->time / 1e6;
-  uint64_t usec = g->time - (sec * 1e6);
-  
+
   char buf[2048];
   snprintf( buf, sizeof(buf), 
 				"{ \"pose\" : [ %.3f, %.3f, %.3f, %.3f, %.3f, %.3f ], "
@@ -151,7 +150,7 @@ char* xdr_format_geom( const av_geom_t* g )
 char* xdr_format_data_ranger( av_msg_t* d )
 {
   assert(d);
-  assert(d->type == AV_MODEL_RANGER);
+  assert(d->interface == AV_INTERFACE_RANGER);
   assert(d->data);
   const av_ranger_data_t* rd = d->data;
   
@@ -159,7 +158,7 @@ char* xdr_format_data_ranger( av_msg_t* d )
   utstring_printf(s, "{ " );
   uts_print_time(s, d->time );
   utstring_printf(s, ",\n" );
-  utstring_printf(s, " \"type\" : \"ranger\", \n" );
+  utstring_printf(s, " \"interface\" : \"ranger\", \n" );
   utstring_printf(s, " \"transducer_count\" : %u, \n", rd->transducer_count );
   utstring_printf(s, " \"transducers\" : [\n" );
   
@@ -191,7 +190,7 @@ char* xdr_format_data_ranger( av_msg_t* d )
 char* xdr_format_cfg_ranger( av_msg_t* d )
 {
   assert(d);
-  assert(d->type == AV_MODEL_RANGER);
+  assert(d->interface == AV_INTERFACE_RANGER);
   assert(d->data);
   const av_ranger_cfg_t* cfg = d->data;
   
@@ -199,7 +198,7 @@ char* xdr_format_cfg_ranger( av_msg_t* d )
   utstring_printf(s, "{ " );
   uts_print_time(s, d->time );
   utstring_printf(s, ",\n" );
-  utstring_printf(s, " \"type\" : \"ranger\", \n" );
+  utstring_printf(s, " \"interface\" : \"ranger\", \n" );
   utstring_printf(s, " \"transducer_count\" : %u, \n", cfg->transducer_count );
   utstring_printf(s, " \"transducers\" : [\n" );
   
@@ -221,7 +220,7 @@ char* xdr_format_cfg_ranger( av_msg_t* d )
 char* xdr_format_cfg_fiducial( av_msg_t* d )
 {
   assert(d);
-  assert(d->type == AV_MODEL_FIDUCIAL);
+  assert(d->interface == AV_INTERFACE_FIDUCIAL);
   assert(d->data);
   const av_fiducial_cfg_t* cfg = d->data;
 	
@@ -229,7 +228,7 @@ char* xdr_format_cfg_fiducial( av_msg_t* d )
   utstring_printf(s, "{ " );
   uts_print_time(s, d->time );
   utstring_printf(s, ",\n" );
-  utstring_printf(s, "\"type\" : \"fiducial\", \n" );
+  utstring_printf(s, "\"interface\" : \"fiducial\", \n" );
 
 	utstring_printf(s, "\"fov\" : [[%.3f,%.3f], [%.3f,%.3f], [%.3f,%.3f]] ",
 									cfg->fov[0].min,
@@ -244,7 +243,7 @@ char* xdr_format_cfg_fiducial( av_msg_t* d )
   return uts_dup_free(s);
 }
 
-char* xdr_format_fiducial( av_fiducial_t* f )
+static char* xdr_format_fiducial( const av_fiducial_t* f )
 {
   UT_string* s = uts_new();
   utstring_printf(s, "{ " );	
@@ -259,7 +258,7 @@ char* xdr_format_fiducial( av_fiducial_t* f )
 char* xdr_format_data_fiducial( av_msg_t* d )
 {
   assert(d);
-  assert(d->type == AV_MODEL_FIDUCIAL);
+  assert(d->interface == AV_INTERFACE_FIDUCIAL);
   assert(d->data);
   const av_fiducial_data_t* fid = d->data;
 
@@ -267,7 +266,7 @@ char* xdr_format_data_fiducial( av_msg_t* d )
   utstring_printf(s, "{ " );
   uts_print_time(s, d->time );
   utstring_printf(s, ",\n" );
-  utstring_printf(s, " \"type\" : \"fiducial\", \n" );
+  utstring_printf(s, " \"interface\" : \"fiducial\", \n" );
   utstring_printf(s, " \"fiducial_count\" : %u, \n", fid->fiducial_count );
   utstring_printf(s, " \"fiducials\" : [\n" );
   
