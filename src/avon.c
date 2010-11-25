@@ -156,8 +156,11 @@ void add_std_hdrs(struct evhttp_request* req )
 	
 	evhttp_add_header(req->output_headers, 
 										"Server", server_str ); // todo: insert version number  
-	evhttp_add_header(req->output_headers, 
-										"Content-Type", "application/json; charset=UTF-8");  
+	evhttp_add_header(req->output_headers,"Content-Type", "application/json; charset=UTF-8");  
+	
+	evhttp_add_header(req->output_headers, "Access-Control-Allow-Origin", "*"); 
+	evhttp_add_header(req->output_headers, "Access-Control-Allow-Methods", "POST, GET, OPTIONS");  
+
 	//evhttp_add_header(req->output_headers, "Content-Language", "en-us");  
 
 	//struct evkeyval *item = NULL;
@@ -214,7 +217,7 @@ void handle_tree( struct evhttp_request* req, void* dummy )
 
 /*   printf( "ACCEPT: %s\n", accept ? accept : "<not found" ); */
 
-	add_std_hdrs( req );
+	//add_std_hdrs( req );
 
 	switch(req->type )
 		{
