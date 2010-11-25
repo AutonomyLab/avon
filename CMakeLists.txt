@@ -28,8 +28,6 @@ MACRO (FOO_MAKE_PKGCONFIG _name _desc _version _extDeps _intDeps _cFlags _libFla
   INSTALL (FILES ${CMAKE_CURRENT_BINARY_DIR}/${_name}.pc DESTINATION lib/pkgconfig/ COMPONENT pkgconfig)
 ENDMACRO (FOO_MAKE_PKGCONFIG)
 
-FOO_MAKE_PKGCONFIG( "avon" "HTTP interface for robot simulators" ${AVON_VERSION} "" "" "" "")
-
 #####################################
 # Build type cflags
 SET (CMAKE_C_FLAGS_RELEASE " -std=c99 -DNDEBUG -Wall " CACHE INTERNAL "C Flags for release" FORCE)
@@ -64,6 +62,15 @@ ELSE( LIBJSON_FOUND )
   MESSAGE( ${INDENT} "Libjson not detected" )
 ENDIF( LIBJSON_FOUND )
 
+# libevent doesn't support pkg-config, so we do it the old-fashioned way
+message( STATUS "Checking for libevent" )
+find_path( EVENT_INCLUDE_DIR event.h DOC "Libevent include dir" )
+find_library( EVENT_LIB event DOC "Event lib" )
+
+MESSAGE( STATUS "Libevent" )
+MESSAGE( STATUS "  EVENT_INCLUDE_DIR = ${EVENT_INCLUDE_DIR}" )
+MESSAGE( STATUS "  EVENT_LIB = ${EVENT_LIB}" )
+
 include_directories(
    .
 	src 
@@ -87,7 +94,9 @@ set_target_properties(avon-static PROPERTIES OUTPUT_NAME avon)
 # Prevent deletion of existing lib of same name
 set_target_properties(avon-static PROPERTIES CLEAN_DIRECT_OUTPUT 1)
 
-target_link_libraries(avon event json)
+target_link_libraries(avon ${EVENT_LIB} json)
+
+FOO_MAKE_PKGCONFIG( "avon" "HTTP interface for robot simulators" "${AVON_VERSION}" "" "" "-I${EVENT_INCLUDE_DIR}" "${JSON_LDFLAGS} -l${EVENT_LIB}" )
 
 install(TARGETS avon avon-static
         LIBRARY DESTINATION lib
