@@ -460,7 +460,7 @@ void handle_pva_set( struct evhttp_request* req, void* handle )
   memcpy( buf, EVBUFFER_DATA(req->input_buffer), buflen );  
   buf[buflen] = 0; // string terminator
   
-  printf( "received %lu bytes\n", buflen );
+  printf( "received %lu bytes\n", (unsigned long)buflen );
   printf( "   %s\n", buf );
 
   av_pva_t pva;

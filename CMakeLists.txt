@@ -30,9 +30,9 @@ ENDMACRO (FOO_MAKE_PKGCONFIG)
 
 #####################################
 # Build type cflags
-SET (CMAKE_C_FLAGS_RELEASE " -std=c99 -DNDEBUG -Wall " CACHE INTERNAL "C Flags for release" FORCE)
-SET (CMAKE_C_FLAGS_DEBUG " -std=c99 -g  -Wall " CACHE INTERNAL "C Flags for debug" FORCE)
-SET (CMAKE_C_FLAGS_PROFILE " -std=c99 -g -pg -Wall " CACHE INTERNAL "C Flags for profile" FORCE)
+SET (CMAKE_C_FLAGS_RELEASE " -std=gnu99 -DNDEBUG -Wall " CACHE INTERNAL "C Flags for release" FORCE)
+SET (CMAKE_C_FLAGS_DEBUG " -std=gnu99 -g  -Wall " CACHE INTERNAL "C Flags for debug" FORCE)
+SET (CMAKE_C_FLAGS_PROFILE " -std=gnu99 -g -pg -Wall " CACHE INTERNAL "C Flags for profile" FORCE)
 
 #####################################
 # Set the default build type
