@@ -346,6 +346,76 @@ void av_check()
   event_loop( EVLOOP_NONBLOCK );
 }    
 
+void handle_summary( struct evhttp_request* req, interface_handle_pair_t* ihp )
+{
+	assert(req);
+	assert(ihp);
+	assert(ihp->handle);
+	
+	av_interface_t interface = ihp->interface;
+	void* handle = ihp->handle;
+	
+  switch(req->type )
+		{
+		case EVHTTP_REQ_GET:
+			{
+				av_pva_t pva;
+				(*_av.pva_get)( handle, &pva );				
+				char* xdr_pva = xdr_format_pva( &pva );			 
+				
+				char* xdr_data = NULL;
+				if( _av.data_get[interface] && _xdr_format_fn[interface].data )
+					{						
+						av_msg_t data;
+						(*_av.data_get[interface])( handle, &data );			 
+						xdr_data = _xdr_format_fn[interface].data( &data );
+						assert(xdr_data);				
+					}
+				
+				char* xdr_cfg = NULL;
+				if( _av.cfg_get[interface]  && _xdr_format_fn[interface].cfg )
+					{
+						av_msg_t cfg;
+						(*_av.cfg_get[interface])( handle, &cfg );			 
+						xdr_cfg = _xdr_format_fn[interface].cfg( &cfg );
+						assert(xdr_cfg);				
+					}
+				
+				// combine the three parts into a single summary of this object's state
+				UT_string* s = uts_new();
+				utstring_printf(s, "%s\n%s\n%s ", 
+												xdr_pva, 
+												xdr_cfg ? xdr_cfg : "",
+												xdr_data ? xdr_data : "" );
+				reply_success( req, HTTP_OK, "model GET OK", utstring_body(s) );			
+				
+				// clean up
+				utstring_free(s);
+				free(xdr_pva);			 
+				free(xdr_data);
+				free(xdr_cfg);
+		  }
+		break;
+		
+	 case EVHTTP_REQ_HEAD:						
+		 reply_success( req, HTTP_OK, "model HEAD OK", NULL );									
+		 break;
+		 
+	 case EVHTTP_REQ_POST:
+		{
+		  /* 				if( _av.data */
+		  /* 				av_data_t data; */
+		  /* 				if( parse_xdr_data( req->payload, &data ) != 0 ) */
+		  /* 					puts( "ERROR: failed to parse XDR on POST data" ); */
+		  /* 				else				 */
+		  /* 					(*_av.data_set)( handle, &data );  */
+		  
+		  reply_error( req, HTTP_NOTMODIFIED, "model POST error: model cannot be set." );									
+		}	break;	
+	 default:
+		reply_error( req, HTTP_NOTMODIFIED, "model unrecognized action" );						
+	 }
+}
 
 void handle_data( struct evhttp_request* req, interface_handle_pair_t* ihp )
 {	
@@ -622,13 +692,16 @@ int av_register_model( const char* name,
   // now install callbacks for this node
 
   char buf[256];
-    
+  
+	// PVA requests
   snprintf( buf, 256, "/%s/pva", name );
   evhttp_set_cb( _av.eh, buf, (evhttp_cb_t)handle_pva, handle );
 	
+	// geometry requests
   snprintf( buf, 256, "/%s/geom", name );
   evhttp_set_cb( _av.eh, buf, (evhttp_cb_t)handle_geom, handle );
   
+	// data requests
   interface_handle_pair_t* ihp = malloc(sizeof(ihp));
   assert(ihp);
   ihp->interface = interface;
@@ -636,6 +709,10 @@ int av_register_model( const char* name,
   
   snprintf( buf, 256, "/%s/data", name );
   evhttp_set_cb( _av.eh, buf, (evhttp_cb_t)handle_data, ihp );
+	
+	// everything requests (no property name)
+	snprintf( buf, 256, "/%s", name );
+  evhttp_set_cb( _av.eh, buf, (evhttp_cb_t)handle_summary, ihp );
 	
 /*   snprintf( buf, 256, "/%s/cmd", name ); */
 /*   evhttp_set_cb( av->eh, buf, (evhttp_cb_t)handle_cmd[interface], ihp ); */

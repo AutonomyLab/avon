@@ -19,3 +19,6 @@ typedef struct {
   UT_hash_handle hh; /* makes this structure hashable */
   UT_array* children; /* array of strings naming our children */
 } _av_node_t;
+
+// macro wrapper for creating new utstrings cleanly
+UT_string* uts_new(void);
