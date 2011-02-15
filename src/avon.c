@@ -37,6 +37,24 @@ _av_node_t _root;
 // hash table handle
 _av_node_t* _tree = NULL;
 
+static const char* HTML_BOILERPLATE_HEADER = 
+"<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\">\n"
+"<html>\n"
+"<head>\n"
+"   <meta http-equiv=\"Content-Type\" content=\"text/html; charset=iso-8859-1\">\n"
+"   <meta name=\"GENERATOR\" content=\"Avon\">\n"
+"   <meta name=\"description\" content=\"HTTP/REST robot interface\">\n"
+"   <meta name=\"keywords\" content=\"robot\">\n"
+"   <title>Avon</title>\n"
+"</head>\n"
+"<body>\n";
+
+static const char* HTML_BOILERPLATE_FOOTER = 
+"</body>\n"
+"</html>\n";
+
+//<link href=\"style.css\" rel=\"stylesheet\" type=\"text/css\">
+
 // local, statically allocated server instance structure
 struct av
 {
@@ -200,6 +218,89 @@ void reply_success( struct evhttp_request* req,
 		evhttp_send_reply( req, code, description, NULL );			 		
 }
 
+void handle_index( struct evhttp_request* req, void* dummy )
+{
+	assert(req);
+	
+	//	printf( "HEADERS: %s\n", req->input_headers );
+
+
+/* 	struct evkeyval *item = NULL; */
+/* 	puts( "HEADERS" ); */
+/* 	TAILQ_FOREACH( item, req->input_headers, next ) */
+/* 		printf( "HEADER: %s = %s\n", item->key, item->value ); */
+	
+/* 	const char* accept = evhttp_find_header( req->input_headers, "Accept" ); */
+
+/*   printf( "ACCEPT: %s\n", accept ? accept : "<not found" ); */
+
+	//add_std_hdrs( req );
+
+	switch(req->type )
+		{
+		case EVHTTP_REQ_GET:
+			{			 
+				char server_str[512];
+				snprintf( server_str, 512, "%s-%s (%s-%s)", 
+									_av.backend_name, _av.backend_version,
+									_package, _version );
+				
+				evhttp_add_header(req->output_headers, 
+													"Server", server_str ); // todo: insert version number  
+				evhttp_add_header(req->output_headers,"Content-Type", "text/HTML; charset=UTF-8");  
+				//evhttp_add_header(req->output_headers, "Access-Control-Allow-Origin", "*"); 
+				//evhttp_add_header(req->output_headers, "Access-Control-Allow-Methods", "POST, GET, OPTIONS");  
+
+				struct evbuffer* eb = evbuffer_new();
+				assert(eb);
+
+				UT_string* page = uts_new();
+				assert(page);
+				utstring_printf( page, 
+												 "<h1>Welcome to %s-%s</h1>"
+												 "<p>"
+												 "<a href=\"/sim/tree\">http://%s/sim/tree</a>\n",
+												 _av.backend_name, // implemented by the simulator
+												 _av.backend_version,
+												 _av.hostportname );
+				
+				_av_node_t* node = &_root;				
+				utstring_printf(page, "%s [%s,%s]\n",
+												node->id, 
+												node->prototype,
+												node->interface );
+				
+/* 				_av_node_t* p = NULL; */
+/* 				while ( (p=(_av_node_t*)utarray_next(node->children,p)))  */
+/* 					{ */
+/* 						utstring_printf(page, "%s [%s,%s]\n", */
+/* 														p->id,  */
+/* 														p->prototype, */
+/* 														p->interface );						 */
+/* 					}	 */
+				
+				utstring_printf( page, 
+												 "<hr> Served by %s-%s <hr> %s",												
+												 _package,
+												 _version,
+												 HTML_BOILERPLATE_FOOTER);
+
+				evbuffer_add( eb, utstring_body(page), utstring_len(page) );							
+				evhttp_send_reply( req, HTTP_OK, "Success", eb);			 
+				evbuffer_free( eb );
+				free(page);
+			} break;
+		case EVHTTP_REQ_HEAD:						
+		 reply_success( req, HTTP_OK, "Success", NULL );			
+		 break;		 
+		case EVHTTP_REQ_POST:
+			reply_error( req, HTTP_NOTMODIFIED, "POST index not implemented" );			 
+			break;
+		default:
+			reply_error( req, HTTP_NOTMODIFIED, "unknown HTTP request type in handle index" );			 
+		}
+}
+
 
 void handle_tree( struct evhttp_request* req, void* dummy )
 {
@@ -327,6 +428,9 @@ void av_startup()
 	//evhttp_set_cb( _av.eh, "/sim/clock", (evhttp_cb_t)SimClockCb, (void*)this );
 	
 	evhttp_set_cb( _av.eh, "/sim/tree", (evhttp_cb_t)handle_tree, NULL );
+
+	evhttp_set_cb( _av.eh, "/", (evhttp_cb_t)handle_index, NULL );
+	evhttp_set_cb( _av.eh, "/index.html", (evhttp_cb_t)handle_index, NULL );
 
   //evhttp_set_gencb( _av.eh, &WebSim::EventCallback, (void*)this );
   

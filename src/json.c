@@ -203,14 +203,28 @@ char* xdr_format_cfg_ranger( av_msg_t* d )
   utstring_printf(s, " \"transducers\" : [\n" );
   
   for( int i=0; i<cfg->transducer_count; i++ )
-	 {
-		if( i > 0 )				
-		  utstring_printf(s, ",\n" );		
-
-		char* jgeom = xdr_format_geom( &cfg->transducers[i].geom );		
+		{
+			if( i > 0 )				
+				utstring_printf(s, ",\n" );		
+			
+		 utstring_printf(s, "{ \"geom\" : " );
+		 
+		 char* jgeom = xdr_format_geom( &cfg->transducers[i].geom );		
 		utstring_printf(s, "%s", jgeom );
 		free(jgeom);
+
+		
+		utstring_printf( s, ", \"fov\" : [ [ %.2f, %.2f ], [ %.2f, %.2f ], [%.2f, %.2f] ]",
+										 cfg->transducers[i].fov[0].min,
+										 cfg->transducers[i].fov[0].max,
+										 cfg->transducers[i].fov[1].min,
+										 cfg->transducers[i].fov[1].max,
+										 cfg->transducers[i].fov[2].min,
+										 cfg->transducers[i].fov[2].max );
+
+		utstring_printf(s, " }" );
 	 }
+
   utstring_printf(s, " ]" );
   utstring_printf(s, " }\n" );
   
