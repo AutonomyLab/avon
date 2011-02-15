@@ -27,6 +27,13 @@ typedef void(*evhttp_cb_t)(struct evhttp_request *, void *);
 #include "avon.h"
 #include "avon_internal.h"
 
+const char* av_interface_names[] = {
+ 	"sim", 
+	"generic", 
+	"ranger", 
+	"fiducial" 
+};
+
 static const char* _package = "Avon";
 static const char* _version = "0.1";
 //static const char* FAVICONFILE = "/favicon.ico";
@@ -218,6 +225,29 @@ void reply_success( struct evhttp_request* req,
 		evhttp_send_reply( req, code, description, NULL );			 		
 }
 
+void html_tree( UT_string* s, const char* prefix, const char* name )
+{
+	_av_node_t* node = NULL;
+	if( name )
+		HASH_FIND_STR( _tree, name, node );
+	else
+		node = &_root;
+	
+	assert( node );
+	
+	utstring_printf(s, "<tr><td><a href=\"http://%s/%s\">%s</a><td>%s<td>%s</tr>\n",
+									_av.hostportname,
+									node->id, 
+									node->id, 
+									av_interface_names[node->interface],
+									node->prototype );
+	
+	char** p=NULL;
+  while ( (p=(char**)utarray_next(node->children,p))) 
+		html_tree(s, "", *p );
+}
+
+
 void handle_index( struct evhttp_request* req, void* dummy )
 {
 	assert(req);
@@ -256,29 +286,18 @@ void handle_index( struct evhttp_request* req, void* dummy )
 
 				UT_string* page = uts_new();
 				assert(page);
+
 				utstring_printf( page, 
-												 "<h1>Welcome to %s-%s</h1>"
-												 "<p>"
-												 "<a href=\"/sim/tree\">http://%s/sim/tree</a>\n",
+												 "<h1>%s-%s</h1>"
+												 "<h2>Objects</h2>",
 												 _av.backend_name, // implemented by the simulator
-												 _av.backend_version,
-												 _av.hostportname );
+												 _av.backend_version );
 				
-				_av_node_t* node = &_root;				
-				utstring_printf(page, "%s [%s,%s]\n",
-												node->id, 
-												node->prototype,
-												node->interface );
-				
-/* 				_av_node_t* p = NULL; */
-/* 				while ( (p=(_av_node_t*)utarray_next(node->children,p)))  */
-/* 					{ */
-/* 						utstring_printf(page, "%s [%s,%s]\n", */
-/* 														p->id,  */
-/* 														p->prototype, */
-/* 														p->interface );						 */
-/* 					}	 */
-				
+				utstring_printf(page, "<table>\n"
+												"<tr><th>name<th>interface<th>prototype</tr>\n" );
+				html_tree( page, "", NULL );
+				utstring_printf(page, "\n</table>\n" );
+								
 				utstring_printf( page, 
 												 "<hr> Served by %s-%s <hr> %s",												
 												 _package,
